@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>La Ferme du Val Vert</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%231F3A2C'/><path d='M9 22c0-8 6-13 14-13-1 8-6 13-14 13zm0 0 7-7' stroke='%23A8D27F' stroke-width='2.4' fill='none' stroke-linecap='round'/></svg>">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" data-icon="leaf"></div>
+        <div>
+          <div class="brand-name">Val Vert</div>
+          <div class="brand-sub">Simulation de ferme</div>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-view="accueil"><span data-icon="home"></span>Accueil</button>
+        <button class="nav-item" data-view="ferme"><span data-icon="map"></span>Ma ferme</button>
+        <button class="nav-item" data-view="elevage"><span data-icon="cow"></span>Élevage<em class="badge" id="badge-elevage"></em></button>
+        <button class="nav-item" data-view="marche"><span data-icon="store"></span>Marché</button>
+      </nav>
+
+      <div class="side-card clock-card">
+        <div class="clock-day" id="clk-day">Jour 1</div>
+        <div class="clock-time" id="clk-time">05:00</div>
+        <div class="daybar"><i id="clk-bar"></i></div>
+        <div class="speed" id="speed">
+          <button data-speed="0" title="Pause"><span data-icon="pause"></span></button>
+          <button data-speed="1">×1</button>
+          <button data-speed="2">×2</button>
+          <button data-speed="4">×4</button>
+          <button data-speed="8">×8</button>
+        </div>
+      </div>
+
+      <div class="side-card money-card">
+        <div class="money-label">Trésorerie</div>
+        <div class="money" id="money">1 500 €</div>
+        <div class="goal"><i id="goal-bar"></i></div>
+        <div class="goal-label" id="goal-label">Objectif 15 000 €</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- ACCUEIL -->
+      <section class="view active" id="view-accueil">
+        <div class="hero">
+          <svg class="hero-art" id="hero-art" viewBox="0 0 1200 380" preserveAspectRatio="xMidYMid slice"></svg>
+          <div class="hero-greet">
+            <div class="avatar" id="avatar"></div>
+            <div>
+              <div class="greet-small" id="greet">Bonjour</div>
+              <div class="greet-big">Ferme du Val Vert</div>
+            </div>
+          </div>
+          <div class="hero-chip" id="hero-weather"></div>
+        </div>
+
+        <div class="home-grid">
+          <div class="card health-card">
+            <div class="ring-wrap" id="ring-farm"></div>
+            <div>
+              <div class="card-kicker">Santé de la ferme</div>
+              <div class="card-title" id="farm-health-label">En bonne santé</div>
+              <div class="muted small" id="farm-health-sub"></div>
+            </div>
+          </div>
+          <div class="card weather-card" id="weather-card"></div>
+        </div>
+
+        <div class="section-head"><h2>Chiffres clés</h2></div>
+        <div class="stats-grid" id="stats-grid"></div>
+
+        <div class="home-grid two">
+          <div class="card">
+            <div class="card-head"><h3>Objectifs</h3></div>
+            <ul class="objectives" id="objectives"></ul>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Journal de la ferme</h3></div>
+            <ul class="journal" id="journal"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- MA FERME -->
+      <section class="view" id="view-ferme">
+        <header class="page-head">
+          <div>
+            <h1>Ma ferme</h1>
+            <div class="loc"><span data-icon="pin"></span>Ferme du Val Vert · 12,5 ha</div>
+          </div>
+        </header>
+        <div class="pills" id="zone-pills"></div>
+        <div class="farm-layout">
+          <div class="map-card">
+            <div class="map-frame">
+              <svg id="map" viewBox="0 0 1000 900"></svg>
+              <button class="map-btn" id="map-back" title="Vue d'ensemble"><span data-icon="expand"></span></button>
+            </div>
+            <div class="map-hint" id="map-hint">
+              <span class="hint-icon" data-icon="hand"></span>
+              <div><b>Cliquez sur une zone pour l'explorer</b><br><span class="muted small" id="map-hint-sub"></span></div>
+            </div>
+          </div>
+          <div class="zone-panel" id="zone-panel"></div>
+        </div>
+      </section>
+
+      <!-- ÉLEVAGE -->
+      <section class="view" id="view-elevage">
+        <header class="page-head">
+          <div>
+            <h1>Élevage</h1>
+            <div class="loc"><span data-icon="pin"></span>Ferme du Val Vert</div>
+          </div>
+        </header>
+        <div class="live-grid">
+          <div class="card live-summary" id="live-summary"></div>
+          <div class="card feeding" id="feeding"></div>
+        </div>
+        <div class="section-head"><h2>Catégories</h2><span class="muted small">Choisissez une catégorie pour voir le détail</span></div>
+        <div class="cats" id="cats"></div>
+        <div class="card" id="animal-list"></div>
+      </section>
+
+      <!-- MARCHÉ -->
+      <section class="view" id="view-marche">
+        <header class="page-head">
+          <div>
+            <h1>Marché</h1>
+            <div class="loc"><span data-icon="pin"></span>Marché de Val Vert · les prix changent chaque jour</div>
+          </div>
+        </header>
+        <div class="market-grid">
+          <div class="card">
+            <div class="card-head"><h3>Vendre</h3><button class="btn ghost sm" id="sell-all">Tout vendre</button></div>
+            <table class="table" id="sell-table"></table>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Acheter</h3></div>
+            <div id="buy-list"></div>
+          </div>
+        </div>
+        <div class="section-head"><h2>Améliorations</h2></div>
+        <div class="upgrades" id="upgrades"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+  <div class="modal" id="modal" hidden></div>
+
+  <script src="js/icons.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
