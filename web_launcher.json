@@ -1,0 +1,4 @@
+{
+  "cmd": "python -u server.py --port {port} --host {host} --sans-navigateur",
+  "keep": ["sauvegarde.json"]
+}

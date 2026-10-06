@@ -9,7 +9,11 @@ Le style graphique s'inspire d'une maquette d'appli « Farm App » (fond crème,
 python server.py              # ouvre http://localhost:8000
 python server.py --nouvelle   # ignore la sauvegarde et repart de zéro
 python server.py --port 9000 --sans-navigateur
+python server.py --host 0.0.0.0   # jouable depuis les autres appareils du réseau (iPad, PC…)
 ```
+
+Le port et l'adresse peuvent aussi venir des variables d'environnement `PORT` et `HOST`.
+Le fichier `web_launcher.json` permet de lancer le jeu depuis [web_launcher](https://github.com/pilou33620/web_launcher) (port libre automatique, accès réseau local).
 
 Python 3.10 ou plus récent. **Aucune dépendance** : seulement la bibliothèque standard.
 La partie est sauvegardée dans `sauvegarde.json` toutes les 10 s et à chaque action.

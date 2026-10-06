@@ -2,11 +2,15 @@
 
     python server.py            → http://localhost:8000
     python server.py --port 9000 --nouvelle
+    python server.py --host 0.0.0.0   → joignable depuis les autres appareils du réseau
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import signal
+import socket
 import threading
 import time
 import webbrowser
@@ -93,9 +97,21 @@ def make_handler(world: World):
     return Handler
 
 
+def lan_ip():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("10.255.255.255", 1))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
 def main():
     p = argparse.ArgumentParser(description="La Ferme du Val Vert")
-    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)),
+                   help="port d'écoute (défaut : $PORT ou 8000)")
+    p.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"),
+                   help="adresse d'écoute : 127.0.0.1 = cet appareil seulement, 0.0.0.0 = tout le réseau local")
     p.add_argument("--nouvelle", action="store_true", help="ignorer la sauvegarde")
     p.add_argument("--sans-navigateur", action="store_true")
     args = p.parse_args()
@@ -108,9 +124,20 @@ def main():
             world.tick()
 
     threading.Thread(target=loop, daemon=True).start()
-    srv = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(world))
+    srv = ThreadingHTTPServer((args.host, args.port), make_handler(world))
     url = f"http://localhost:{args.port}"
     print(f"🌾 La Ferme du Val Vert tourne sur {url}  (Ctrl+C pour quitter)")
+    if args.host not in ("127.0.0.1", "localhost"):
+        ip = lan_ip()
+        if ip:
+            print(f"   depuis un autre appareil du réseau : http://{ip}:{args.port}")
+
+    # arrêt demandé par un autre programme (launcher, kill…) → même sortie propre que Ctrl+C
+    def stop(*_):
+        raise KeyboardInterrupt
+    for name in ("SIGTERM", "SIGBREAK"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), stop)
     if not args.sans_navigateur:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
