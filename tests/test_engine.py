@@ -33,16 +33,18 @@ class EngineTest(unittest.TestCase):
 
     def test_fields_start_empty(self):
         for f in self.g.s["champs"].values():
-            self.assertEqual(f["etat"], "vide")
-            self.assertIsNone(f["culture"])
+            self.assertEqual(len(f["planches"]), 1)
+            self.assertEqual(f["planches"][0]["etat"], "vide")
+            self.assertIsNone(f["planches"][0]["culture"])
 
     def test_crop_cycle(self):
-        f = self.g.s["champs"]["parcelle_b"]
+        field = self.g.s["champs"]["parcelle_b"]
+        f = field["planches"][0]
         money = self.g.s["argent"]
         self.g.act({"type": "semer", "champ": "parcelle_b", "culture": "carottes"})
         self.assertEqual((f["etat"], f["culture"]), ("seme", "carottes"))
         self.assertLess(self.g.s["argent"], money)
-        f["croissance"], f["humidite"] = 99.9, 80
+        f["croissance"], field["humidite"] = 99.9, 80
         self.g.advance(30)
         self.assertEqual(f["etat"], "mur")
         self.g.act({"type": "recolter", "champ": "parcelle_b"})
@@ -83,7 +85,7 @@ class EngineTest(unittest.TestCase):
         f = self.g.s["champs"]["parcelle_a"]
         self.assertTrue(f["serre"])
         self.g.act({"type": "semer", "champ": "parcelle_a", "culture": "melons"})
-        self.assertEqual(f["culture"], "melons")
+        self.assertEqual(f["planches"][0]["culture"], "melons")
         self.assertEqual(self.g.view()["derive"]["noms_champs"]["parcelle_a"], "Serre A")
 
     def test_greenhouse_grows_faster(self):
@@ -93,7 +95,8 @@ class EngineTest(unittest.TestCase):
             g.act({"type": "semer", "champ": "parcelle_b", "culture": "tomates"})
             g.s["champs"]["parcelle_b"]["humidite"] = 80
             g.advance(300)
-        self.assertGreater(g2.s["champs"]["parcelle_b"]["croissance"], self.g.s["champs"]["parcelle_b"]["croissance"])
+        self.assertGreater(g2.s["champs"]["parcelle_b"]["planches"][0]["croissance"],
+                           self.g.s["champs"]["parcelle_b"]["planches"][0]["croissance"])
 
     def test_migrate_v1_save(self):
         old = self.g.s
@@ -105,8 +108,9 @@ class EngineTest(unittest.TestCase):
         old["stock"]["legumes"] = 50.0
         old["prix"]["legumes"] = old["prix_hier"]["legumes"] = 1.8
         g = Game.loads(json.dumps(old))
-        self.assertEqual(g.s["champs"]["parcelle_a"]["culture"], "tomates")
-        self.assertIsNone(g.s["champs"]["parcelle_b"]["culture"])
+        self.assertEqual(g.s["champs"]["parcelle_a"]["planches"][0]["culture"], "tomates")
+        self.assertEqual(g.s["champs"]["parcelle_a"]["planches"][0]["croissance"], 40.0)
+        self.assertIsNone(g.s["champs"]["parcelle_b"]["planches"][0]["culture"])
         self.assertEqual(g.s["stock"]["carottes"], 50.0)
         self.assertNotIn("legumes", g.s["prix"])
         g.advance(60)
@@ -180,8 +184,8 @@ class EngineTest(unittest.TestCase):
     def test_chemical_fertilizer_not_bio(self):
         g = self.g
         g.act({"type": "semer", "champ": "parcelle_b", "culture": "carottes"})
-        f = g.s["champs"]["parcelle_b"]
-        f["humidite"] = 80
+        g.s["champs"]["parcelle_b"]["humidite"] = 80
+        f = g.s["champs"]["parcelle_b"]["planches"][0]
         g.act({"type": "fertiliser", "champ": "parcelle_b", "engrais": "chimique"})
         self.assertTrue(f["chimique"])
         f["croissance"] = 99.9
@@ -283,7 +287,7 @@ class EngineTest(unittest.TestCase):
         self.assertIn("parcelle_d", v["ref"]["parcelles"])
         # on peut semer, récolter et mettre une serre sur la nouvelle parcelle
         g.act({"type": "semer", "champ": "parcelle_d", "culture": "salades"})
-        g.s["champs"]["parcelle_d"].update(etat="mur", croissance=100.0)
+        g.s["champs"]["parcelle_d"]["planches"][0].update(etat="mur", croissance=100.0)
         g.act({"type": "recolter", "champ": "parcelle_d"})
         self.assertGreater(g.s["stock"]["salades"], 0)
         for _ in range(5):
@@ -318,6 +322,86 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(len(g.s["previsions"]), 6)
         self.assertIsNone(g.s["meteo_hier"])
 
+    def test_beds_mixed_crops(self):
+        g = self.g
+        f = g.s["champs"]["parcelle_a"]
+        g.act({"type": "diviser", "champ": "parcelle_a", "planches": 2})
+        self.assertEqual(len(f["planches"]), 2)
+        with self.assertRaises(ActionError):
+            g.act({"type": "diviser", "champ": "parcelle_a", "planches": 4})
+        g.act({"type": "semer", "champ": "parcelle_a", "planche": 0, "culture": "salades"})
+        alone = g.expected_yield("parcelle_a", 0)
+        g.act({"type": "semer", "champ": "parcelle_a", "planche": 1, "culture": "carottes"})
+        self.assertTrue(g.mixed("parcelle_a"))
+        self.assertIn("association", g.s["objectifs"])
+        self.assertAlmostEqual(g.expected_yield("parcelle_a", 0), alone * 1.10)
+        with self.assertRaises(ActionError):   # on ne redécoupe pas une parcelle en culture
+            g.act({"type": "diviser", "champ": "parcelle_a", "planches": 3})
+        with self.assertRaises(ActionError):
+            g.act({"type": "semer", "champ": "parcelle_a", "planche": 5, "culture": "salades"})
+        # chaque planche pousse et se récolte séparément ; l'arrosage est commun
+        f["humidite"] = 80
+        f["planches"][0]["croissance"] = 99.9
+        g.advance(10)
+        self.assertEqual(f["planches"][0]["etat"], "mur")
+        self.assertEqual(f["planches"][1]["etat"], "seme")
+        g.act({"type": "recolter", "champ": "parcelle_a", "planche": 0})
+        self.assertGreater(g.s["stock"]["salades"], 0)
+        self.assertLess(g.s["stock"]["salades"], 150 * 1.25)   # la moitié de la parcelle seulement
+        v = g.view()["derive"]
+        self.assertEqual(len(v["recolte_est"]["parcelle_a"]), 2)
+
+    def test_technologies(self):
+        g = self.g
+        with self.assertRaises(ActionError):
+            g.act({"type": "technologie", "tech": "drone"})   # trop cher
+        g.s["argent"] = 14000
+        charges = g.charges()
+        g.act({"type": "technologie", "tech": "recolteur"})
+        self.assertGreater(g.charges(), charges + 17)
+        self.assertIn("techno", g.s["objectifs"])
+        g.s["argent"] = 14000
+        g.act({"type": "technologie", "tech": "semoir"})
+        with self.assertRaises(ActionError):
+            g.act({"type": "technologie", "tech": "semoir"})
+        # robot de récolte + semoir : la planche mûre est récoltée puis ressemée toute seule
+        g.act({"type": "semer", "champ": "parcelle_b", "culture": "salades"})
+        b = g.s["champs"]["parcelle_b"]["planches"][0]
+        g.s["champs"]["parcelle_b"]["humidite"] = 80
+        b["croissance"] = 99.9
+        g.advance(10)
+        self.assertGreater(g.s["stock"]["salades"], 0)
+        self.assertEqual((b["etat"], b["culture"]), ("seme", "salades"))
+
+    def test_drone_and_weeder(self):
+        results = {}
+        for techs in ((), ("drone", "desherbeur")):
+            g = Game(seed=5)
+            g.s["meteo"] = {"type": "canicule", "nom": "Canicule", "temp": 38}
+            g.s["technologies"] = list(techs)
+            g.act({"type": "semer", "champ": "parcelle_b", "culture": "tomates"})
+            g.s["champs"]["parcelle_b"]["humidite"] = 20
+            g.advance(240)
+            b = g.s["champs"]["parcelle_b"]["planches"][0]
+            results[techs] = (b["qualite"], b["croissance"])
+        self.assertGreater(results[("drone", "desherbeur")][0], results[()][0])
+        self.assertGreater(results[("drone", "desherbeur")][1], results[()][1])
+
+    def test_migrate_v3_fields(self):
+        st = json.loads(self.g.dumps())
+        st["version"] = 3
+        st["champs"]["parcelle_a"] = {"etat": "pousse", "culture": "mais", "serre": False, "croissance": 50.0,
+                                      "humidite": 70.0, "sante": 90.0, "qualite": 80.0, "chimique": False,
+                                      "engrais_jusqua": 0, "boost": 1.0, "mur_depuis": None}
+        del st["technologies"]
+        g = Game(st)
+        f = g.s["champs"]["parcelle_a"]
+        self.assertEqual(f["humidite"], 70.0)
+        self.assertEqual(f["planches"][0]["culture"], "mais")
+        self.assertNotIn("etat", f)
+        self.assertEqual(g.s["technologies"], [])
+        g.advance(60)
+
     def test_diligent_player_progresses(self):
         """Un joueur appliqué doit gagner de l'argent sur 15 jours."""
         g = self.g
@@ -332,13 +416,14 @@ class EngineTest(unittest.TestCase):
                     g.act({"type": "nourrir"})
                 except ActionError:
                     pass
-            for k, f in g.s["champs"].items():
+            for k, field in g.s["champs"].items():
+                f = field["planches"][0]
                 try:
                     if f["etat"] == "mur":
                         g.act({"type": "recolter", "champ": k})
                     if f["etat"] in ("vide", "fletri"):
                         g.act({"type": "semer", "champ": k, "culture": "tomates" if k == "parcelle_a" else "carottes"})
-                    if f["humidite"] < 30:
+                    if field["humidite"] < 30:
                         g.act({"type": "arroser", "champ": k})
                 except ActionError:
                     pass

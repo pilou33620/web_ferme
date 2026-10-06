@@ -34,6 +34,8 @@ EXTRA_FIELDS = [("parcelle_d", 1800), ("parcelle_e", 2600), ("parcelle_f", 3500)
                 ("parcelle_g", 4500), ("parcelle_h", 5500), ("parcelle_i", 6500)]
 EXTRA_FIELD_UPKEEP = 8        # €/jour par parcelle achetée (fermage, entretien des haies)
 FORECAST_DAYS = 6             # prévisions : demain + 5 jours (7 jours avec aujourd'hui)
+MAX_BEDS = 3                  # une parcelle se divise en 1 à 3 planches, chacune avec sa culture
+ASSOCIATION = 1.10            # association de cultures : +10 % de récolte quand une parcelle mélange 2 cultures ou plus
 
 # Cultures au choix. `soif` multiplie l'évaporation ; `serre` = culture réservée aux serres.
 # Le produit récolté porte la même clé que la culture.
@@ -124,6 +126,24 @@ UPGRADES = {
                    "desc": "+20 % de rendement à chaque récolte."},
 }
 
+# Technologies modernes : chères, avec un coût d'entretien journalier, mais elles travaillent pour vous.
+TECH = {
+    "drone":      {"nom": "Drone agricole", "prix": 5500, "entretien": 10, "emoji": "🚁",
+                   "desc": "Survole les cultures et traite au plus juste : les plants perdent deux fois moins "
+                           "de santé et de qualité. Il reste au sol les jours d'orage."},
+    "desherbeur": {"nom": "Robot désherbeur", "prix": 8000, "entretien": 12, "emoji": "🤖",
+                   "desc": "Arrache les mauvaises herbes entre les rangs, sans aucun produit : "
+                           "les cultures poussent 15 % plus vite et restent bio."},
+    "semoir":     {"nom": "Semoir autonome", "prix": 9000, "entretien": 12, "emoji": "🌱",
+                   "desc": "Ressème tout seul la même culture dès qu'une planche est récoltée "
+                           "(les graines sont payées automatiquement)."},
+    "recolteur":  {"nom": "Robot de récolte", "prix": 12000, "entretien": 18, "emoji": "🦾",
+                   "desc": "Récolte chaque planche dès qu'elle est mûre, jour et nuit : "
+                           "plus rien ne pourrit sur pied, et la qualité est au maximum."},
+}
+DRONE_PROTECT = 0.5           # pertes de santé et de qualité avec le drone
+DESHERBEUR_BOOST = 1.15
+
 # Constructions : à acheter en cours de partie, rien n'est fourni au départ.
 BUILDINGS = {
     "eolienne": {"nom": "Éolienne", "prix": 2000, "max": 2, "gain_max": 90,
@@ -163,6 +183,8 @@ OBJECTIVES = [
     {"id": "eolienne", "titre": "Installer une éolienne"},
     {"id": "serre", "titre": "Construire une serre"},
     {"id": "terrain", "titre": "Acheter une nouvelle parcelle"},
+    {"id": "association", "titre": "Associer deux cultures sur une parcelle"},
+    {"id": "techno", "titre": "Acheter une technologie moderne"},
     {"id": "fortune", "titre": f"Atteindre {TARGET_MONEY:,} € en caisse".replace(",", " ")},
 ]
 
@@ -229,7 +251,7 @@ class Game:
             }
         fields = {k: Game.empty_field(hum) for k, hum in zip(FIELDS, (72.0, 64.0, 70.0))}
         st = {
-            "version": 3,
+            "version": 4,
             "seed": seed,
             "minute": 5 * 60,          # jour 1 (lundi), 05:00
             "vitesse": 1,
@@ -260,6 +282,7 @@ class Game:
             "ameliorations": [],
             "eoliennes": 0,
             "ruches": 0,
+            "technologies": [],
             "stats": {"recolte_kg": 0.0, "ventes": 0.0, "ventes_marche": 0.0, "recoltes": 0, "energie": 0.0,
                       "production_jour": {}, "hier": {}},
             "objectifs": [],
@@ -272,10 +295,15 @@ class Game:
         return st
 
     @staticmethod
-    def empty_field(humidite: float = 65.0) -> dict:
-        return {"etat": "vide", "culture": None, "serre": False, "croissance": 0.0, "humidite": humidite,
-                "sante": 100.0, "qualite": 100.0, "chimique": False, "engrais_jusqua": 0, "boost": 1.0,
-                "mur_depuis": None}
+    def empty_bed() -> dict:
+        """Une planche : ce qui y pousse et dans quel état."""
+        return {"etat": "vide", "culture": None, "croissance": 0.0, "sante": 100.0, "qualite": 100.0,
+                "chimique": False, "engrais_jusqua": 0, "boost": 1.0, "mur_depuis": None}
+
+    @staticmethod
+    def empty_field(humidite: float = 65.0, beds: int = 1) -> dict:
+        """Une parcelle : le sol (humidité, serre) est commun, les cultures sont par planche."""
+        return {"serre": False, "humidite": humidite, "planches": [Game.empty_bed() for _ in range(beds)]}
 
     @staticmethod
     def default_stall() -> dict:
@@ -293,13 +321,17 @@ class Game:
             old = s.get("champs", {})
             fields = {}
             for new, (prev, crop) in zip(FIELDS, (("tomates", "tomates"), ("legumes", "carottes"), ("mais", "mais"))):
-                f = {**self.empty_field(), **old.get(prev, {})}
+                f = {"serre": False, "humidite": 65.0, **self.empty_bed(), **old.get(prev, {})}
                 f["culture"] = crop if f["etat"] != "vide" else None
                 fields[new] = f
             s["champs"] = fields
             s["stock"]["carottes"] = s["stock"].get("carottes", 0.0) + s["stock"].pop("legumes", 0.0)
-        s["version"] = 3
-        for k, v in {"meteo_hier": None, "menu": False, "vitesse_menu": 1, "eoliennes": 0, "ruches": 0, "reputation": 50.0, "collecte_lait": True, "collecte_jour": 0,
+        if s.get("version", 1) < 4:   # V3 : une seule culture par parcelle → planches
+            for f in s["champs"].values():
+                if "planches" not in f:
+                    f["planches"] = [{k: f.pop(k, v) for k, v in self.empty_bed().items()}]
+        s["version"] = 4
+        for k, v in {"technologies": [], "meteo_hier": None, "menu": False, "vitesse_menu": 1, "eoliennes": 0, "ruches": 0, "reputation": 50.0, "collecte_lait": True, "collecte_jour": 0,
                      "dernier_chimique": -10 * MIN_PER_DAY, "repas_bio": 0.0, "etal": self.default_stall(),
                      "marche": self.empty_market(0), "qualite": {}, "bio": {}}.items():
             s.setdefault(k, v)
@@ -317,8 +349,12 @@ class Game:
             for k in [k for k in d if k not in ITEMS]:
                 del d[k]
         for f in s["champs"].values():
-            for k, v in self.empty_field().items():
-                f.setdefault(k, v)
+            f.setdefault("serre", False)
+            f.setdefault("humidite", 65.0)
+            f.setdefault("planches", [self.empty_bed()])
+            for b in f["planches"]:
+                for k, v in self.empty_bed().items():
+                    b.setdefault(k, v)
         if s.get("meteo"):   # anciennes sauvegardes : 3 jours de prévisions seulement
             rng = random.Random(f"{s['seed']}-{s['minute']:.0f}-meteo-ext")
             while len(s["previsions"]) < FORECAST_DAYS:
@@ -358,6 +394,27 @@ class Game:
         nom = field_label(key)
         return nom.replace("Parcelle", "Serre") if self.s["champs"][key]["serre"] else nom
 
+    def bed_name(self, key: str, i: int) -> str:
+        n = len(self.s["champs"][key]["planches"])
+        return self.field_name(key) if n == 1 else f"{self.field_name(key)} (planche {i + 1})"
+
+    def beds(self):
+        """Toutes les planches de la ferme : (parcelle, index, parcelle, planche)."""
+        for key, f in self.s["champs"].items():
+            for i, b in enumerate(f["planches"]):
+                yield key, i, f, b
+
+    def mixed(self, key: str) -> bool:
+        """Association de cultures : au moins deux cultures différentes en terre sur la parcelle."""
+        crops = {b["culture"] for b in self.s["champs"][key]["planches"] if b["etat"] in ("seme", "pousse", "mur")}
+        return len(crops) >= 2
+
+    def has_tech(self, t: str) -> bool:
+        return t in self.s["technologies"]
+
+    def drone_active(self) -> bool:
+        return self.has_tech("drone") and self.s["meteo"]["type"] != "orage"
+
     def n_extra_fields(self) -> int:
         return sum(1 for k in self.s["champs"] if k not in FIELDS)
 
@@ -372,7 +429,8 @@ class Game:
 
     def charges(self) -> float:
         return 35 + 1.5 * self.n_animals() + 12 * len(self.s["ameliorations"]) \
-            + BUILDINGS["serre"]["entretien"] * self.n_serres() + EXTRA_FIELD_UPKEEP * self.n_extra_fields()
+            + BUILDINGS["serre"]["entretien"] * self.n_serres() + EXTRA_FIELD_UPKEEP * self.n_extra_fields() \
+            + sum(TECH[t]["entretien"] for t in self.s["technologies"])
 
     def serre_unlocked(self) -> bool:
         return self.s["stats"]["ventes"] >= BUILDINGS["serre"]["ventes_requises"]
@@ -475,7 +533,7 @@ class Game:
         st[item] = tot
 
     def flowering(self) -> int:
-        return sum(1 for f in self.s["champs"].values() if f["etat"] in ("pousse", "mur"))
+        return sum(1 for *_, b in self.beds() if b["etat"] in ("pousse", "mur"))
 
     def honey_per_day(self) -> float:
         info = BUILDINGS["ruche"]
@@ -483,7 +541,7 @@ class Game:
         return self.s["ruches"] * info["miel_jour"] * WEATHER[self.s["meteo"]["type"]]["miel"] * flowers
 
     def honey_quality(self) -> float:
-        cultures = {f["culture"] for f in self.s["champs"].values() if f["etat"] in ("pousse", "mur")}
+        cultures = {b["culture"] for *_, b in self.beds() if b["etat"] in ("pousse", "mur")}
         return clamp(60 + 10 * len(cultures) + (-10 if self.s["meteo"]["type"] == "canicule" else 0))
 
     def honey_bio(self) -> float:
@@ -557,53 +615,65 @@ class Game:
             self.s["argent"] += gain
             self.s["stats"]["energie"] += gain
 
-        # cultures
+        # cultures : le sol (humidité) est commun à la parcelle, chaque planche pousse à son rythme
+        protect = DRONE_PROTECT if self.drone_active() else 1.0
+        weed = DESHERBEUR_BOOST if self.has_tech("desherbeur") else 1.0
         for key, f in self.s["champs"].items():
-            crop = CROPS.get(f["culture"]) or {"soif": 1.0}
             serre = f["serre"]
-            evap = 0.025 * w["evap"] * crop["soif"] * (1 + max(0, temp - 22) / 15) * m
+            active = [b for b in f["planches"] if b["etat"] in ("seme", "pousse", "mur")]
+            soif = sum(CROPS[b["culture"]]["soif"] for b in active) / len(active) if active else 1.0
+            evap = 0.025 * w["evap"] * soif * (1 + max(0, temp - 22) / 15) * m
             rain = 0.0 if serre else RAIN_WATER * w["pluie"] * m   # la pluie arrose, sauf sous serre
             f["humidite"] = clamp(f["humidite"] - evap * (SERRE_EVAP if serre else 1.0) + rain)
-            if self.has("arrosage") and f["etat"] in ("seme", "pousse", "mur") and f["humidite"] < 35 \
-                    and (serre or not self.raining()):
+            if self.has("arrosage") and active and f["humidite"] < 35 and (serre or not self.raining()):
                 self._water(key, auto=True)
-            if f["etat"] in ("seme", "pousse"):
-                hum = f["humidite"]
-                water_factor = 0.15 if hum < 15 else (0.6 if hum < 35 else (1.0 if hum <= 90 else 0.7))
-                hot = temp > 34 and not serre
-                heat = 0.6 if hot else 1.0
-                boost = f["boost"] if f["engrais_jusqua"] > self.s["minute"] else 1.0
-                rate = 100.0 / (crop["jours"] * MIN_PER_DAY) * (SERRE_BOOST if serre else 1.0)
-                f["croissance"] = min(100.0, f["croissance"] + rate * water_factor * heat * boost * m)
-                if f["croissance"] > 8:
-                    f["etat"] = "pousse"
-                if hum < 15:
-                    f["sante"] = clamp(f["sante"] - 0.02 * m)
-                elif hum > 35:
-                    f["sante"] = clamp(f["sante"] + 0.004 * m)
-                # qualité : sol trop sec ou détrempé, coups de chaleur
-                if hum < 25:
-                    f["qualite"] = clamp(f["qualite"] - 0.02 * m)
-                elif hum > 92:
-                    f["qualite"] = clamp(f["qualite"] - 0.01 * m)
-                if hot:
-                    f["qualite"] = clamp(f["qualite"] - 0.01 * m)
-                if f["croissance"] >= 100:
-                    f["etat"] = "mur"
-                    f["mur_depuis"] = self.s["minute"]
-                    self.log(f"{self.field_name(key)} : les {crop['nom'].lower()} sont prêtes à récolter !", "succes")
-                if f["sante"] <= 0:
-                    f["etat"] = "fletri"
-                    self.log(f"{self.field_name(key)} : les {crop['nom'].lower()} ont flétri, faute d'eau.", "alerte")
-            elif f["etat"] == "mur":
-                waited = self.s["minute"] - (f["mur_depuis"] or 0)
-                if waited > 0.5 * MIN_PER_DAY:   # cueillies trop tard, elles perdent en qualité
-                    f["qualite"] = clamp(f["qualite"] - 0.01 * m)
-                if waited > 1.5 * MIN_PER_DAY:
-                    f["sante"] = clamp(f["sante"] - 0.03 * m)
-                    if f["sante"] <= 0:
-                        f["etat"] = "fletri"
-                        self.log(f"{self.field_name(key)} : les {crop['nom'].lower()} ont pourri sur pied.", "alerte")
+            hum = f["humidite"]
+            for i, b in enumerate(f["planches"]):
+                if b["etat"] not in ("seme", "pousse", "mur"):
+                    continue
+                crop = CROPS[b["culture"]]
+                if b["etat"] in ("seme", "pousse"):
+                    water_factor = 0.15 if hum < 15 else (0.6 if hum < 35 else (1.0 if hum <= 90 else 0.7))
+                    hot = temp > 34 and not serre
+                    heat = 0.6 if hot else 1.0
+                    boost = b["boost"] if b["engrais_jusqua"] > self.s["minute"] else 1.0
+                    rate = 100.0 / (crop["jours"] * MIN_PER_DAY) * (SERRE_BOOST if serre else 1.0) * weed
+                    b["croissance"] = min(100.0, b["croissance"] + rate * water_factor * heat * boost * m)
+                    if b["croissance"] > 8:
+                        b["etat"] = "pousse"
+                    if hum < 15:
+                        b["sante"] = clamp(b["sante"] - 0.02 * m * protect)
+                    elif hum > 35:
+                        b["sante"] = clamp(b["sante"] + 0.004 * m / protect)
+                    # qualité : sol trop sec ou détrempé, coups de chaleur (le drone limite les dégâts)
+                    if hum < 25:
+                        b["qualite"] = clamp(b["qualite"] - 0.02 * m * protect)
+                    elif hum > 92:
+                        b["qualite"] = clamp(b["qualite"] - 0.01 * m * protect)
+                    if hot:
+                        b["qualite"] = clamp(b["qualite"] - 0.01 * m * protect)
+                    if b["croissance"] >= 100:
+                        b["etat"] = "mur"
+                        b["mur_depuis"] = self.s["minute"]
+                        if self.has_tech("recolteur"):
+                            self._harvest(key, i, robot=True)
+                            continue
+                        self.log(f"{self.bed_name(key, i)} : les {crop['nom'].lower()} sont prêtes à récolter !", "succes")
+                    if b["sante"] <= 0:
+                        b["etat"] = "fletri"
+                        self.log(f"{self.bed_name(key, i)} : les {crop['nom'].lower()} ont flétri, faute d'eau.", "alerte")
+                else:   # mûres
+                    if self.has_tech("recolteur"):
+                        self._harvest(key, i, robot=True)
+                        continue
+                    waited = self.s["minute"] - (b["mur_depuis"] or 0)
+                    if waited > 0.5 * MIN_PER_DAY:   # cueillies trop tard, elles perdent en qualité
+                        b["qualite"] = clamp(b["qualite"] - 0.01 * m)
+                    if waited > 1.5 * MIN_PER_DAY:
+                        b["sante"] = clamp(b["sante"] - 0.03 * m)
+                        if b["sante"] <= 0:
+                            b["etat"] = "fletri"
+                            self.log(f"{self.bed_name(key, i)} : les {crop['nom'].lower()} ont pourri sur pied.", "alerte")
 
         # animaux
         prod = self.s["stats"]["production_jour"]
@@ -754,12 +824,14 @@ class Game:
         if w == "orage":
             key = rng.choice(list(self.s["champs"]))
             f = self.s["champs"][key]
-            if f["etat"] in ("pousse", "mur"):
+            hit = [b for b in f["planches"] if b["etat"] in ("pousse", "mur")]
+            if hit:
                 if f["serre"]:
                     self.log(f"Orage : la {self.field_name(key)} a protégé ses cultures.", "info")
                 else:
-                    f["sante"] = clamp(f["sante"] - 25)
-                    f["qualite"] = clamp(f["qualite"] - 15)
+                    for b in hit:
+                        b["sante"] = clamp(b["sante"] - 25)
+                        b["qualite"] = clamp(b["qualite"] - 15)
                     self.log(f"L'orage a abîmé la {self.field_name(key)} (−25 % de santé, qualité en baisse).", "alerte")
         roll = rng.random()
         if roll < 0.10 and not self.has("cloture") and self.s["animaux"]["poules"]["liste"]:
@@ -845,75 +917,125 @@ class Game:
             raise ActionError("Parcelle inconnue.")
         return key, self.s["champs"][key]
 
+    def _bed(self, a) -> tuple[str, dict, int, dict]:
+        key, f = self._field(a)
+        try:
+            i = int(a.get("planche", 0))
+        except (TypeError, ValueError):
+            raise ActionError("Planche inconnue.")
+        if not 0 <= i < len(f["planches"]):
+            raise ActionError("Planche inconnue.")
+        return key, f, i, f["planches"][i]
+
     def _item(self, a) -> str:
         item = a.get("produit")
         if item not in ITEMS:
             raise ActionError("Produit inconnu.")
         return item
 
-    def _a_semer(self, a):
-        key, f = self._field(a)
-        if f["etat"] not in ("vide", "fletri"):
-            raise ActionError("La parcelle n'est pas libre.")
-        c = a.get("culture")
-        if c not in CROPS:
-            raise ActionError("Choisissez ce que vous voulez semer.")
+    def _sow(self, key: str, i: int, c: str):
+        f = self.s["champs"][key]
         crop = CROPS[c]
         if crop.get("serre") and not f["serre"]:
             raise ActionError(f"Les {crop['nom'].lower()} ne poussent que sous serre.")
         self._pay(crop["graines"])
-        f.update(etat="seme", culture=c, croissance=0.0, sante=100.0, qualite=100.0, chimique=False,
-                 engrais_jusqua=0, boost=1.0, mur_depuis=None)
-        self.log(f"{self.field_name(key)} : {crop['nom'].lower()} semées (−{crop['graines']} €).", "info")
+        f["planches"][i].update(etat="seme", culture=c, croissance=0.0, sante=100.0, qualite=100.0, chimique=False,
+                                engrais_jusqua=0, boost=1.0, mur_depuis=None)
+
+    def _a_semer(self, a):
+        key, f, i, b = self._bed(a)
+        if b["etat"] not in ("vide", "fletri"):
+            raise ActionError("La planche n'est pas libre.")
+        c = a.get("culture")
+        if c not in CROPS:
+            raise ActionError("Choisissez ce que vous voulez semer.")
+        self._sow(key, i, c)
+        crop = CROPS[c]
+        self.log(f"{self.bed_name(key, i)} : {crop['nom'].lower()} semées (−{crop['graines']} €).", "info")
+        if self.mixed(key):
+            return f"{crop['nom']} semées · association de cultures : +{round((ASSOCIATION - 1) * 100)} % de récolte !"
         return f"{crop['nom']} semées."
+
+    def _a_diviser(self, a):
+        """Découpe une parcelle en 1, 2 ou 3 planches (toutes doivent être libres)."""
+        key, f = self._field(a)
+        try:
+            n = int(a.get("planches", 1))
+        except (TypeError, ValueError):
+            n = 0
+        if not 1 <= n <= MAX_BEDS:
+            raise ActionError(f"Une parcelle se divise en 1 à {MAX_BEDS} planches.")
+        if any(b["etat"] not in ("vide", "fletri") for b in f["planches"]):
+            raise ActionError("Récoltez d'abord : toutes les planches doivent être libres pour redécouper la parcelle.")
+        f["planches"] = [self.empty_bed() for _ in range(n)]
+        return f"{self.field_name(key)} : {n} planche{'s' if n > 1 else ''}."
 
     def _a_arroser(self, a):
         key, f = self._field(a)
-        if f["etat"] in ("vide",):
+        if all(b["etat"] == "vide" for b in f["planches"]):
             raise ActionError("Rien à arroser ici.")
         self._water(key)
         return f"{self.field_name(key)} arrosée (−600 L)."
 
     def _a_fertiliser(self, a):
-        key, f = self._field(a)
-        if f["etat"] not in ("seme", "pousse"):
+        key, f, i, b = self._bed(a)
+        if b["etat"] not in ("seme", "pousse"):
             raise ActionError("L'engrais n'est utile que sur une culture en pousse.")
+        nom = self.bed_name(key, i)
         if a.get("engrais") == "chimique":
             self._pay(CHEM_PRICE)
-            f.update(engrais_jusqua=self.s["minute"] + MIN_PER_DAY, boost=1.8, chimique=True,
-                     qualite=clamp(f["qualite"] - 12))
+            b.update(engrais_jusqua=self.s["minute"] + MIN_PER_DAY, boost=1.8, chimique=True,
+                     qualite=clamp(b["qualite"] - 12))
             self.s["dernier_chimique"] = self.s["minute"]
-            self.log(f"{self.field_name(key)} : engrais chimique (−{CHEM_PRICE} €). La récolte ne sera pas bio.", "info")
-            return f"{self.field_name(key)} : croissance ×1,8 pendant 24 h et +20 % de récolte, mais plus de bio."
+            self.log(f"{nom} : engrais chimique (−{CHEM_PRICE} €). La récolte ne sera pas bio.", "info")
+            return f"{nom} : croissance ×1,8 pendant 24 h et +20 % de récolte, mais plus de bio."
         if self.s["stock"]["fumier"] < 50:
             raise ActionError("Il faut 50 kg de fumier (produit par les cochons).")
         self.s["stock"]["fumier"] -= 50
-        f.update(engrais_jusqua=self.s["minute"] + MIN_PER_DAY, boost=1.5, qualite=clamp(f["qualite"] + 4))
-        return f"{self.field_name(key)} fertilisée au fumier : croissance ×1,5 pendant 24 h, qualité en hausse."
+        b.update(engrais_jusqua=self.s["minute"] + MIN_PER_DAY, boost=1.5, qualite=clamp(b["qualite"] + 4))
+        return f"{nom} fertilisée au fumier : croissance ×1,5 pendant 24 h, qualité en hausse."
 
-    def harvest_quality(self, key: str) -> float:
+    def harvest_quality(self, key: str, i: int = 0) -> float:
         f = self.s["champs"][key]
-        return clamp(0.4 * f["sante"] + 0.6 * f["qualite"] + (4 if f["serre"] else 0))
+        b = f["planches"][i]
+        robot = 3 if self.has_tech("recolteur") else 0
+        return clamp(0.4 * b["sante"] + 0.6 * b["qualite"] + (4 if f["serre"] else 0) + robot)
 
-    def _a_recolter(self, a):
-        key, f = self._field(a)
-        if f["etat"] != "mur":
-            raise ActionError("La récolte n'est pas encore prête.")
-        c = f["culture"]
-        qty = round(self.expected_yield(key))
-        q = self.harvest_quality(key)
-        self._add(c, qty, q, 0.0 if f["chimique"] else 1.0)
+    def _harvest(self, key: str, i: int, robot: bool = False) -> str:
+        b = self.s["champs"][key]["planches"][i]
+        c = b["culture"]
+        qty = round(self.expected_yield(key, i))
+        q = self.harvest_quality(key, i)
+        self._add(c, qty, q, 0.0 if b["chimique"] else 1.0)
         self.s["stats"]["recolte_kg"] += qty
         self.s["stats"]["recoltes"] += 1
-        bio = "" if f["chimique"] else ", bio"
-        f.update(etat="vide", culture=None, croissance=0.0, mur_depuis=None, engrais_jusqua=0, chimique=False)
-        self.log(f"Récolte : {qty} kg de {CROPS[c]['nom'].lower()} (qualité {quality_label(q).lower()}{bio}).", "succes")
-        return f"+{qty} kg de {CROPS[c]['nom'].lower()} · qualité {quality_label(q).lower()}{bio}."
+        bio = "" if b["chimique"] else ", bio"
+        b.update(etat="vide", culture=None, croissance=0.0, mur_depuis=None, engrais_jusqua=0, chimique=False)
+        who = "Le robot a récolté" if robot else "Récolte :"
+        msg = f"{qty} kg de {CROPS[c]['nom'].lower()} (qualité {quality_label(q).lower()}{bio})"
+        replant = ""
+        if self.has_tech("semoir"):   # le semoir autonome ressème la même culture
+            try:
+                self._sow(key, i, c)
+                replant = f" Le semoir a ressemé (−{CROPS[c]['graines']} €)."
+            except ActionError:
+                replant = " Le semoir n'a pas pu ressemer : fonds insuffisants."
+        self.log(f"{who} {msg} sur la {self.bed_name(key, i)}.{replant}", "succes")
+        return f"+{msg}.{replant}"
 
-    def expected_yield(self, key: str) -> float:
+    def _a_recolter(self, a):
+        key, f, i, b = self._bed(a)
+        if b["etat"] != "mur":
+            raise ActionError("La récolte n'est pas encore prête.")
+        return self._harvest(key, i)
+
+    def expected_yield(self, key: str, i: int = 0) -> float:
         f = self.s["champs"][key]
-        return CROPS[f["culture"]]["rendement"] * field_size(key) * (0.3 + 0.7 * f["sante"] / 100) \
-            * (1.2 if self.has("tracteur") else 1.0) * (1.2 if f["chimique"] else 1.0) * self.pollination()
+        b = f["planches"][i]
+        share = field_size(key) / len(f["planches"])
+        return CROPS[b["culture"]]["rendement"] * share * (0.3 + 0.7 * b["sante"] / 100) \
+            * (1.2 if self.has("tracteur") else 1.0) * (1.2 if b["chimique"] else 1.0) * self.pollination() \
+            * (ASSOCIATION if self.mixed(key) else 1.0)
 
     def _a_nourrir(self, a):
         self._feed()
@@ -1054,10 +1176,11 @@ class Game:
                                   f"({self.s['stats']['ventes']:.0f} € pour l'instant).")
             if f["serre"]:
                 raise ActionError("Cette parcelle est déjà sous serre.")
-            if f["etat"] not in ("vide", "fletri"):
+            if any(b["etat"] not in ("vide", "fletri") for b in f["planches"]):
                 raise ActionError("Récoltez d'abord : la parcelle doit être libre pour construire.")
             self._pay(info["prix"])
-            f.update(serre=True, etat="vide", culture=None, croissance=0.0, sante=100.0, mur_depuis=None)
+            f["serre"] = True
+            f["planches"] = [self.empty_bed() for _ in f["planches"]]
             self.log(f"{self.field_name(key)} construite ! Melons et poivrons y poussent.", "succes")
             return f"{self.field_name(key)} construite."
         raise ActionError("Construction inconnue.")
@@ -1074,6 +1197,17 @@ class Game:
         self.log(f"Nouveau terrain acheté : la {field_label(key)} est prête à être semée (−{prix_txt} €, "
                  f"{EXTRA_FIELD_UPKEEP} €/jour d'entretien).", "succes")
         return f"{field_label(key)} achetée !"
+
+    def _a_technologie(self, a):
+        t = a.get("tech")
+        if t not in TECH:
+            raise ActionError("Technologie inconnue.")
+        if self.has_tech(t):
+            raise ActionError("Déjà acheté.")
+        self._pay(TECH[t]["prix"])
+        self.s["technologies"].append(t)
+        self.log(f"Nouvelle technologie : {TECH[t]['nom']} ! Entretien {TECH[t]['entretien']} €/jour.", "succes")
+        return f"{TECH[t]['nom']} en service."
 
     def _a_vitesse(self, a):
         v = a.get("valeur")
@@ -1117,6 +1251,8 @@ class Game:
             "eolienne": self.s["eoliennes"] >= 1,
             "serre": self.n_serres() >= 1,
             "terrain": self.n_extra_fields() >= 1,
+            "association": any(self.mixed(k) for k in self.s["champs"]),
+            "techno": len(self.s["technologies"]) >= 1,
             "fortune": self.s["argent"] >= TARGET_MONEY,
         }
         for o in OBJECTIVES:
@@ -1145,8 +1281,8 @@ class Game:
                           "menu": {6: "Foin & ensilage", 12: "Céréales", 18: "Foin & maïs"}[m]})
         all_animals = [a for g in s["animaux"].values() for a in g["liste"]]
         animal_health = sum(a["sante"] for a in all_animals) / len(all_animals) if all_animals else 0
-        active = [f for f in s["champs"].values() if f["etat"] != "vide"]
-        crop_health = sum(f["sante"] for f in active) / len(active) if active else 100
+        active = [b for *_, b in self.beds() if b["etat"] != "vide"]
+        crop_health = sum(b["sante"] for b in active) / len(active) if active else 100
         sat = [g["satiete"] for g in s["animaux"].values() if g["liste"]]
         feed = sum(sat) / len(sat) if sat else 0
         production = 0.0
@@ -1175,7 +1311,7 @@ class Game:
             "nourriture": round(feed),
             "production": round(production),
             "humidite_moy": round(sum(f["humidite"] for f in s["champs"].values()) / len(s["champs"])),
-            "n_cultures": sum(1 for f in s["champs"].values() if f["etat"] in ("seme", "pousse", "mur")),
+            "n_cultures": sum(1 for *_, b in self.beds() if b["etat"] in ("seme", "pousse", "mur")),
             "repas": meals,
             "ration": round(self.feed_needed()),
             "malades": sum(1 for a in all_animals if a["sante"] < 50),
@@ -1187,8 +1323,12 @@ class Game:
             "serre_debloquee": self.serre_unlocked(),
             "n_serres": self.n_serres(),
             "noms_champs": {k: self.field_name(k) for k in s["champs"]},
-            "recolte_est": {k: round(self.expected_yield(k)) for k, f in s["champs"].items() if f["culture"]},
-            "qualite_champs": {k: round(self.harvest_quality(k)) for k in s["champs"]},
+            "recolte_est": {k: [round(self.expected_yield(k, i)) if b["culture"] else 0 for i, b in enumerate(f["planches"])]
+                            for k, f in self.s["champs"].items()},
+            "qualite_champs": {k: [round(self.harvest_quality(k, i)) for i in range(len(f["planches"]))]
+                               for k, f in self.s["champs"].items()},
+            "association": {k: self.mixed(k) for k in self.s["champs"]},
+            "drone_actif": self.drone_active(),
             "produits": produits,
             "marche_ouvert": self.market_open(),
             "jour_de_marche": self.market_day(),
@@ -1208,7 +1348,8 @@ class Game:
                                  if (nxt := self.next_field()) else None),
         }
         s["ref"] = {"parcelles": {k: {"nom": field_label(k), "taille": field_size(k)} for k in s["champs"]},
-                    "meteo": WEATHER, "vent_kmh": WIND_KMH, "terrain_entretien": EXTRA_FIELD_UPKEEP,
+                    "meteo": WEATHER, "vent_kmh": WIND_KMH, "technologies": TECH, "max_planches": MAX_BEDS,
+                    "association": ASSOCIATION, "drone_protection": DRONE_PROTECT, "desherbeur": DESHERBEUR_BOOST, "terrain_entretien": EXTRA_FIELD_UPKEEP,
                     "terrains_max": len(FIELDS) + len(EXTRA_FIELDS), "cultures": CROPS, "animaux": ANIMALS, "produits": ITEMS,
                     "ameliorations": UPGRADES, "batiments": BUILDINGS, "acheteurs": BUYERS, "emoji": EMOJI,
                     "prix_foin": FEED_PRICE, "prix_foin_bio": FEED_BIO_PRICE, "prix_chimique": CHEM_PRICE,

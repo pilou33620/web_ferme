@@ -50,6 +50,10 @@ const ICONS = {
   breeze: '<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h8"/>',
   live: '<circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>',
   thermo: '<path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 10v6"/>',
+  drone: '<rect x="9.5" y="10" width="5" height="4" rx="1.2"/><path d="M9.5 10.5 6.5 7.5M14.5 10.5l3-3M9.5 13.5l-3 3M14.5 13.5l3 3"/><ellipse cx="5.5" cy="6.5" rx="3" ry="1.2"/><ellipse cx="18.5" cy="6.5" rx="3" ry="1.2"/><ellipse cx="5.5" cy="17.5" rx="3" ry="1.2"/><ellipse cx="18.5" cy="17.5" rx="3" ry="1.2"/>',
+  robot: '<rect x="5" y="8" width="14" height="10" rx="2.5"/><path d="M12 8V5M10 4.5h4"/><circle cx="9.5" cy="13" r="1.2" fill="currentColor"/><circle cx="14.5" cy="13" r="1.2" fill="currentColor"/><path d="M3 11.5v3M21 11.5v3M8 21v-3M16 21v-3"/>',
+  basket: '<path d="M4 10h16l-1.6 9.4a1.6 1.6 0 0 1-1.6 1.3H7.2a1.6 1.6 0 0 1-1.6-1.3z"/><path d="M8 10l4-6 4 6M9 13.5v4M12 13.5v4M15 13.5v4"/>',
+  seeder: '<path d="M4 9h12v6H4z"/><path d="M16 11h3l2 2v2h-5"/><circle cx="7" cy="17.5" r="2"/><circle cx="17" cy="17.5" r="2"/><path d="M6 9V6l3-2 3 2v3"/>',
   wool: '<circle cx="12" cy="12" r="8"/><path d="M6 8c4 0 9 4 12 9M5 13c4-1 8 1 10 5M9 4.5c2 3 6 5 10 5"/>',
 };
 

@@ -24,6 +24,8 @@ const WeatherScene = (() => {
   const cur = { sky0: "#62BDF0", sky1: "#CFEBFA", wind: .25, rain: 0 };    // valeurs lissées
   const clouds = [], drops = [], leaves = [], streaks = [], birds = [], sways = [], rotors = [], cows = [];
   const tractor = { x: 200, dir: 1, wait: 0, wheel: 0, puff: 0 };
+  const flyer = { x: 700, dir: 1, on: false, grounded: false };
+  const crawler = { t: .2, dir: 1, on: false };
   let boltTimer = 4, cropSig = "", herdSig = "", turbSig = "";
 
   const el = (tag, attrs = {}, parent) => {
@@ -168,11 +170,12 @@ const WeatherScene = (() => {
     return s;
   }
   function cropsSVG(state) {
-    const fields = Object.entries(state.champs).filter(([, f]) => !f.serre);
-    if (!fields.length) return "";
+    // toutes les planches en plein champ, réparties sur les rangs du champ
+    const beds = Object.values(state.champs).filter((f) => !f.serre).flatMap((f) => f.planches);
+    if (!beds.length) return "";
     let s = "";
     for (let i = 0; i < ROWS; i++) {
-      const [, f] = fields[Math.floor(i / ROWS * fields.length)];
+      const f = beds[Math.floor(i / ROWS * beds.length)];
       if (f.etat === "vide" || !f.culture) continue;
       const g = Math.max(0, Math.min(1, f.croissance / 100));
       const [a0, b0] = rowLine(i), [a1, b1] = rowLine(i + 1);
@@ -224,6 +227,31 @@ const WeatherScene = (() => {
         <circle r="20" fill="none" stroke="#1B1B1B" stroke-width="4" stroke-dasharray="3 3"/></g>
       <g transform="translate(34 -11)"><circle r="11" fill="#2B2B2B"/><g class="wx-wheel"><circle r="6" class="wx-rim" fill="#EDEDED"/>
         <path d="M-6 0H6M0 -6V6" stroke="#9A9A9A" stroke-width="1.6"/></g></g>`;
+  }
+  // drone vu de côté : deux rotors visibles, nacelle, brume de pulvérisation
+  function droneSVG() {
+    let mist = "";
+    for (let i = 0; i < 10; i++) {
+      const x = -14 + (i % 5) * 7, d = (.9 + (i % 3) * .2).toFixed(1);
+      mist += `<circle r="1.6" fill="#DDF0FB"><animateMotion dur="${d}s" begin="-${(i * .11).toFixed(2)}s" repeatCount="indefinite" path="M${x / 3} 10L${x} 70"/>
+        <animate attributeName="opacity" values=".9;0" dur="${d}s" begin="-${(i * .11).toFixed(2)}s" repeatCount="indefinite"/></circle>`;
+    }
+    return `<g class="wx-dmist">${mist}</g>
+      <path d="M-30 -2H30" stroke="#3C4650" stroke-width="3" stroke-linecap="round"/>
+      <rect x="-12" y="-8" width="24" height="12" rx="5" fill="#F4F6F7" stroke="#B9C3CA" stroke-width="1"/>
+      <rect x="-5" y="4" width="10" height="7" rx="2" fill="#8FB7D6"/><circle cx="0" cy="-2" r="2.6" fill="#3C8CD6"/>
+      <circle class="wx-dled" cx="9" cy="-4" r="1.6" fill="#E2412F"/>
+      <path d="M-30 -2V-7M30 -2V-7" stroke="#3C4650" stroke-width="2.4"/>
+      <ellipse class="wx-prop" cx="-30" cy="-8" rx="15" ry="1.8" fill="#2B2B2B" opacity=".55"/>
+      <ellipse class="wx-prop" cx="30" cy="-8" rx="15" ry="1.8" fill="#2B2B2B" opacity=".55"/>`;
+  }
+  // robot désherbeur vu de côté
+  function robotSVG() {
+    return `<g class="wx-rob"><rect x="-22" y="-26" width="44" height="18" rx="5" fill="#F08A24"/>
+      <path d="M-24 -28L22 -36L24 -30L-22 -22Z" fill="#2D4A7A"/><path d="M-12 -30.5l2 7M0 -32.5l2 7M12 -34.5l2 7" stroke="#6F8FC4" stroke-width="1"/>
+      <circle cx="-13" cy="-6" r="7" fill="#2B2B2B"/><circle cx="13" cy="-6" r="7" fill="#2B2B2B"/><circle cx="-13" cy="-6" r="2.5" fill="#9A9A9A"/><circle cx="13" cy="-6" r="2.5" fill="#9A9A9A"/>
+      <path d="M22 -12l7 10M18 -12l5 12" stroke="#9AA3AB" stroke-width="2" stroke-linecap="round"/>
+      <circle class="wx-rled" cx="16" cy="-20" r="2" fill="#7CFC7C"/></g>`;
   }
   function birdSVG() {
     return `<path d="M-8 0q4 -6 8 0q4 -6 8 0" stroke="#3A4A55" stroke-width="2" fill="none" stroke-linecap="round"/>`;
@@ -292,8 +320,10 @@ const WeatherScene = (() => {
     el("path", { d: "M0 398Q600 390 1200 398V520H0Z", fill: "#76B653" }, svg);
     g("field").innerHTML = fieldSVG();
     g("crops");
+    g("robot", { class: "wx-fade", opacity: 0 }).innerHTML = robotSVG();
     g("irrig").innerHTML = irrigationSVG();
     g("spray", { class: "wx-fade", opacity: 0 }).innerHTML = spraySVG();
+    g("drone", { class: "wx-fade", opacity: 0 }).innerHTML = droneSVG();
     g("pond").innerHTML = pondSVG();
     g("ripples", { class: "wx-fade", opacity: 0 }).innerHTML = Array.from({ length: 9 }, (_, i) => {
       const x = 50 + (i * 67) % 240, y = 452 + (i * 13) % 26, d = (1.1 + (i % 3) * .3).toFixed(1);
@@ -335,6 +365,10 @@ const WeatherScene = (() => {
     R.sky0 = svg.querySelector("#wx-sky0");
     R.sky1 = svg.querySelector("#wx-sky1");
     R.rays = R.sun.querySelector(".wx-rays");
+    R.props = [...R.drone.querySelectorAll(".wx-prop")];
+    R.props.forEach((p) => (p.dataset.cx = p.getAttribute("cx")));
+    R.dled = R.drone.querySelector(".wx-dled");
+    R.rled = R.robot.querySelector(".wx-rled");
     requestAnimationFrame(loop);
   }
 
@@ -426,6 +460,7 @@ const WeatherScene = (() => {
     }
     stepHerd(dt);
     stepTractor(dt);
+    stepTech(dt);
     // arrosage : en continu dans certaines ambiances, ou quelques secondes après « Arroser »
     const spraying = (live ? autoSpray : M.spray) || performance.now() < sprayUntil;
     R.spray.setAttribute("opacity", spraying && cur.rain < .3 ? 1 : 0);
@@ -497,6 +532,38 @@ const WeatherScene = (() => {
     R.tlight.setAttribute("opacity", night > .45 && !sleeping ? 1 : 0);
   }
 
+  // drone qui survole le champ en pulvérisant, robot qui longe un rang
+  function stepTech(dt) {
+    const sleeping = live && (hour >= 21 || hour < 6);
+    const flying = flyer.on && !(live && flyer.grounded) && !sleeping;
+    R.drone.setAttribute("opacity", flying ? 1 : 0);
+    if (flying) {
+      if (gameRunning || !live) {
+        flyer.x += flyer.dir * 70 * dt;
+        if (flyer.x > 1150) flyer.dir = -1;
+        if (flyer.x < 460) flyer.dir = 1;
+      }
+      const y = 330 + Math.sin(time * 2.2) * 6, tilt = flyer.dir * 6;
+      R.drone.setAttribute("transform", `translate(${flyer.x.toFixed(1)} ${y.toFixed(1)}) rotate(${tilt})`);
+      const sq = (.35 + Math.abs(Math.sin(time * 40)) * .65).toFixed(2);
+      R.props.forEach((p) => p.setAttribute("transform", `translate(${p.dataset.cx} 0) scale(${sq} 1) translate(${-p.dataset.cx} 0)`));
+      R.dled.setAttribute("fill", Math.sin(time * 9) > .3 ? "#E2412F" : "#7CFC7C");
+    }
+    const crawling = crawler.on && !sleeping;
+    R.robot.setAttribute("opacity", crawling ? 1 : 0);
+    if (crawling) {
+      if (gameRunning || !live) {
+        crawler.t += crawler.dir * .035 * dt;
+        if (crawler.t > .92) crawler.dir = -1;
+        if (crawler.t < .12) crawler.dir = 1;
+      }
+      const [a0, b0] = rowLine(6), [a1, b1] = rowLine(7);
+      const x = lerp(lerp(a0, a1, .3), lerp(b0, b1, .3), crawler.t), y = 404 + crawler.t * 116, k = .45 + .8 * crawler.t;
+      R.robot.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${(k * crawler.dir).toFixed(2)} ${k.toFixed(2)})`);
+      R.rled.setAttribute("opacity", Math.sin(time * 6) > 0 ? 1 : .2);
+    }
+  }
+
   // ------------------------------------------------------------------ API
   function setMood(m, isLive) {
     live = isLive;
@@ -530,6 +597,9 @@ const WeatherScene = (() => {
     night = live ? ART.nightAmount(hour) : 0;
     gameRunning = state.vitesse > 0 && !state.menu;
     upgraded = state.ameliorations.includes("tracteur");
+    flyer.on = state.technologies.includes("drone");
+    flyer.grounded = !d.drone_actif;
+    crawler.on = state.technologies.includes("desherbeur");
     R.night.setAttribute("opacity", (night * .9).toFixed(2));
     R.stars.setAttribute("opacity", night.toFixed(2));
     R.moon.setAttribute("opacity", live ? night.toFixed(2) : 0);
@@ -542,7 +612,7 @@ const WeatherScene = (() => {
     R.water.setAttribute("transform", `translate(0 ${(4 + 64 * (1 - tankFrac)).toFixed(1)})`);
     autoSpray = state.ameliorations.includes("arrosage") && !d.pluie && d.humidite_moy < 55 && night < .5;
     // cultures semées sur les parcelles en plein champ
-    const sig = Object.values(state.champs).filter((f) => !f.serre).map((f) => `${f.etat}${f.culture}${Math.round(f.croissance / 5)}`).join("|");
+    const sig = Object.values(state.champs).filter((f) => !f.serre).flatMap((f) => f.planches).map((f) => `${f.etat}${f.culture}${Math.round(f.croissance / 5)}`).join("|");
     if (sig !== cropSig) { cropSig = sig; R.crops.innerHTML = cropsSVG(state); }
     syncHerd(state);
     const tsig = `${state.eoliennes}`;

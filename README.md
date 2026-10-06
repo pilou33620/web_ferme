@@ -33,8 +33,15 @@ Atteindre **15 000 €** de trésorerie sans faire faillite. Si le compte reste 
 
 - **Temps** : à la vitesse ×1, une seconde réelle vaut 10 minutes de jeu (une journée dure environ 2 min 24 s). Le jeu propose une pause et les vitesses ×1 à ×8.
 - **Cultures** : trois parcelles libres au départ (A, B, C). Sur chacune, on choisit quoi semer : tomates, carottes, salades, pommes de terre, maïs, fraises ou potirons. Chaque culture a sa durée, son prix de graines, son rendement et ses besoins en eau. On arrose avec 600 L puisés dans le réservoir. Quand il pleut, les parcelles en plein champ s'arrosent toutes seules. Il faut récolter à temps, sinon la récolte pourrit. Un sol trop sec fait flétrir les plants.
+- **Plusieurs cultures par parcelle** : chaque parcelle se découpe en 1, 2 ou 3 **planches** (boutons « Planches » de la parcelle, quand tout est récolté). Chaque planche a sa culture, sa croissance, son engrais et sa récolte ; le sol et l'arrosage restent communs. Deux cultures différentes sur la même parcelle s'entraident (**association de cultures : +10 % de récolte**), et la variété améliore aussi le miel.
 - **Agrandir la ferme** : un terrain est toujours à vendre en bas de la carte (« À vendre », ou le bouton « Agrandir »). Chaque achat ajoute une parcelle libre de 1 ha, de D jusqu'à I : 1 800 €, 2 600 €, 3 500 €, 4 500 €, 5 500 € puis 6 500 €, avec 8 €/jour d'entretien chacune. On peut y semer et y construire une serre comme sur les autres.
 - **Tracteur** : il circule sur les chemins de la propriété, vient labourer les parcelles libres et biner les cultures en plein champ (il laisse des traces de roues), et rentre dormir dans la cour la nuit. Il est rouge au départ. L'amélioration « Tracteur » (+20 % de rendement) le remplace par un modèle neuf, vert et plus rapide.
+- **Technologies modernes** (coopérative, ou section « Technologies modernes » du marché) : chères, avec un entretien journalier.
+  - **Drone agricole** (5 500 €, 10 €/j) : survole et traite les cultures, qui perdent deux fois moins de santé et de qualité. Il reste sur son aire les jours d'orage.
+  - **Robot désherbeur** (8 000 €, 12 €/j) : longe les rangs et arrache les mauvaises herbes, les cultures poussent 15 % plus vite, sans produit chimique.
+  - **Semoir autonome** (9 000 €, 12 €/j) : ressème la même culture dès qu'une planche est récoltée (graines payées automatiquement).
+  - **Robot de récolte** (12 000 €, 18 €/j) : récolte chaque planche dès qu'elle est mûre, jour et nuit, avec un petit bonus de qualité.
+  On les voit travailler sur la carte (le drone pulvérise, les robots suivent les chemins et les rangs) et sur l'écran Météo.
 - **Engrais** : le **fumier** est bio et améliore la qualité (pousse ×1,5). L'**engrais chimique** (35 €) pousse plus vite (×1,8) et donne +20 % de récolte. En contrepartie, la qualité baisse, la récolte n'est plus bio, et le miel non plus pendant 3 jours.
 - **Qualité et bio** : chaque produit a une qualité de 1 à 5 étoiles et une part bio.
   - Pour les cultures, la qualité dépend du sol (ni trop sec, ni détrempé), des coups de chaleur, des orages et d'une récolte faite à temps.
@@ -71,7 +78,7 @@ tests/             tests unitaires du moteur
 API :
 
 - `GET /api/etat` renvoie l'état complet, avec les valeurs calculées dans `derive` et les données de référence dans `ref`.
-- `POST /api/action` attend un JSON `{"type": "...", ...}`. Types possibles : `semer` (avec `champ` et `culture`), `construire` (`batiment` : `eolienne`, `ruche`, ou `serre` avec `champ`), `arroser`, `fertiliser` (`engrais` : `fumier` ou `chimique`), `recolter`, `nourrir`, `soigner`, `vendre` (vente en gros), `etal` (`produit`, puis `actif` et/ou `prix`, `null` = prix conseillé), `collecte` (`actif`), `vendre_animal` (`categorie`, `id` facultatif), `acheter_parcelle` (achète le prochain terrain à vendre), `acheter` (`foin`, `foin_bio` ou un animal), `ameliorer`, `vitesse`, `menu` (`ouvert` : met en pause / reprend), `nouvelle_partie`.
+- `POST /api/action` attend un JSON `{"type": "...", ...}`. Types possibles : `semer` (avec `champ`, `culture` et `planche`, 0 par défaut), `diviser` (`champ`, `planches` de 1 à 3), `construire` (`batiment` : `eolienne`, `ruche`, ou `serre` avec `champ`), `arroser` (`champ`), `fertiliser` (`champ`, `planche`, `engrais` : `fumier` ou `chimique`), `recolter` (`champ`, `planche`), `technologie` (`tech` : `drone`, `desherbeur`, `semoir` ou `recolteur`), `nourrir`, `soigner`, `vendre` (vente en gros), `etal` (`produit`, puis `actif` et/ou `prix`, `null` = prix conseillé), `collecte` (`actif`), `vendre_animal` (`categorie`, `id` facultatif), `acheter_parcelle` (achète le prochain terrain à vendre), `acheter` (`foin`, `foin_bio` ou un animal), `ameliorer`, `vitesse`, `menu` (`ouvert` : met en pause / reprend), `nouvelle_partie`.
 
 ## Tests
 

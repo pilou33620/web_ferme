@@ -555,3 +555,37 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
   .wx-temp { font-size: 70px; }
   .wx-modes { top: auto; bottom: 56px; left: 12px; right: 12px; overflow-x: auto; }
 }
+
+/* ---------- planches (plusieurs cultures par parcelle) ---------- */
+.beds-head { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 8px; font-size: 13px; }
+.seg { display: flex; gap: 2px; background: var(--bg); border-radius: 99px; padding: 3px; }
+.seg button { width: 30px; height: 26px; border-radius: 99px; font-weight: 800; font-size: 13px; color: var(--ink-2); }
+.seg button.on { background: var(--forest); color: #fff; }
+.seg button[disabled]:not(.on) { opacity: .35; cursor: not-allowed; }
+.beds { display: grid; gap: 8px; }
+.bed { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; padding: 10px; border-radius: 16px; background: #F4ECE0; border: 2px solid transparent; transition: border-color .2s, transform .12s; min-width: 0; }
+.bed:hover { border-color: #D9C9AE; }
+.bed.on { border-color: var(--forest); background: #fff; box-shadow: 0 4px 12px rgba(40,35,20,.08); }
+.bed .bed-emo { font-size: 20px; line-height: 1; }
+.bed b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.bed small.pill-tag { padding: 2px 7px; font-size: 10.5px; }
+.bed.pousse, .bed.seme { background: #EEF5E6; }
+.bed.mur { background: var(--amber-soft); }
+.pill-tag.assoc { background: #F1E9FB; color: #7A4FC0; }
+.mini-list li b .pill-tag.assoc { padding: 1px 6px; font-size: 11px; }
+
+/* ---------- technologies ---------- */
+.tech-grid { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.upg.tech { background: linear-gradient(165deg, #F3F6FB, #fff 55%); border: 1px solid #E3E9F2; }
+.upg.tech.owned { background: linear-gradient(165deg, #E5F0E0, #fff 70%); border-color: #CFE3C6; }
+.tech-top { display: flex; align-items: center; justify-content: space-between; }
+.tech-ico { background: #E4ECF8 !important; color: #3D5F9A !important; }
+.tech-emo { font-size: 26px; }
+.tech-cost { display: flex; justify-content: space-between; font-size: 12.5px; background: var(--bg); border-radius: 12px; padding: 7px 10px; }
+.tech-cost span { color: var(--muted); font-weight: 600; }
+.weed { fill: #6DB04D; opacity: .8; animation: rutfade 4s linear forwards; }
+.mist { fill: #DDF0FB; transform-box: fill-box; transform-origin: center; animation: mist 1.3s ease-out forwards; }
+@keyframes mist { from { opacity: .8; transform: scale(.6); } to { opacity: 0; transform: scale(3.2); } }
+.pad-h { font: 800 12px var(--font); fill: #fff; }
+.rotor { animation: spin .5s linear infinite; transform-box: fill-box; transform-origin: center; animation-play-state: paused; }
+.flying .rotor { animation-duration: .12s; animation-play-state: running; }

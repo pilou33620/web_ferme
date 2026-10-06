@@ -108,6 +108,11 @@ async function act(action) {
     if (res.etat) render(res.etat);
     if (res.ok && action.type === "nouvelle_partie") resetUI();
     if (res.ok && action.type === "arroser") WeatherScene.splash();
+    if (res.ok && action.type === "diviser") bedSel[action.champ] = 0;
+    if (res.ok && action.type === "semer" && res.etat) {   // passe à la planche libre suivante
+      const beds = res.etat.champs[action.champ].planches, nxt = beds.findIndex((b) => b.etat === "vide");
+      if (nxt >= 0) bedSel[action.champ] = nxt;
+    }
     if (res.ok && action.type === "acheter_parcelle") {
       const keys = Object.keys(res.etat.champs).sort();
       selectZone(keys[keys.length - 1]);
@@ -129,6 +134,7 @@ document.addEventListener("click", (ev) => {
     if (a.type === "stall") return selectStall(a.stall);
     if (a.type === "confirmer") { confirmNew = a.oui; return render(S); }
     if (a.type === "meteo_mode") { wxMode = a.mode; return render(S); }
+    if (a.type === "bed") { bedSel[a.champ] = a.i; return render(S); }
     return act(a);
   }
 });
@@ -321,89 +327,145 @@ function meter(label, value, cls = "", right) {
 
 const farmArea = (s) => `${nf1.format(12.5 + Object.keys(s.champs).length - 3)} ha`;
 
+// état le plus parlant d'une parcelle à plusieurs planches (à récolter > flétri > en pousse > semé > libre)
+const STATE_RANK = ["mur", "fletri", "pousse", "seme", "vide"];
+const fieldState = (f) => STATE_RANK.find((e) => f.planches.some((b) => b.etat === e)) || "vide";
+const bedFree = (b) => b.etat === "vide" || b.etat === "fletri";
+const cropsLabel = (s, f) => {
+  const names = f.planches.filter((b) => b.culture && b.etat !== "vide").map((b) => `${emoji(s, b.culture)} ${s.ref.cultures[b.culture].nom}`);
+  return [...new Set(names)].join(" + ");
+};
+let bedSel = {};              // planche affichée pour chaque parcelle
+
 function overviewPanel(s, d) {
   const rows = FarmMap.FIELDS.map((k) => {
-    const f = s.champs[k], [st, c] = FIELD_STATE[f.etat];
-    const crop = f.culture ? ` · ${emoji(s, f.culture)} ${s.ref.cultures[f.culture].nom}` : "";
-    return `<li style="cursor:pointer" ${A({ type: "zone", zone: k })}><b>${d.noms_champs[k]}<span class="muted">${crop}</span></b><span class="pill-tag ${c}">${st}</span></li>`;
+    const f = s.champs[k], [st, c] = FIELD_STATE[fieldState(f)];
+    const crop = cropsLabel(s, f);
+    return `<li style="cursor:pointer" ${A({ type: "zone", zone: k })}><b>${d.noms_champs[k]}<span class="muted">${crop ? ` · ${crop}` : ""}</span>${d.association[k] ? ` <span class="pill-tag assoc" title="Association de cultures">🤝</span>` : ""}</b><span class="pill-tag ${c}">${st}</span></li>`;
   }).join("");
   return `<div class="zone-card"><div class="zone-top"><div class="zone-ico">${icon("map")}</div><div><div class="zone-name">Vue d'ensemble</div><div class="muted small">Ferme du Val Vert · ${farmArea(s)}</div></div></div>
     <div class="kv"><div><b>${d.n_cultures}</b><span>Cultures</span></div><div><b>${d.n_animaux}</b><span>Animaux</span></div><div><b>${pct(s.reservoir.niveau / s.reservoir.capacite * 100)}</b><span>Eau</span></div></div>
     <ul class="mini-list">${rows}</ul>
     ${d.terrain_a_vendre ? `<div class="actions"><button class="btn ghost" ${A({ type: "zone", zone: "a_vendre" })}>${icon("plus")}Agrandir · ${d.terrain_a_vendre.nom} · ${eur(d.terrain_a_vendre.prix)}</button></div>` : ""}</div>
+    ${techCard(s, d, true)}
     <div class="zone-card">${meter("Santé de la ferme", d.sante_ferme, barCls(d.sante_ferme))}${meter("Humidité moyenne du sol", d.humidite_moy, "blue")}${meter("Nourriture des animaux", d.nourriture, barCls(d.nourriture))}</div>`;
 }
 
 function fieldPanel(s, d, k) {
-  const f = s.champs[k], [st, c] = FIELD_STATE[f.etat];
-  const ref = f.culture ? s.ref.cultures[f.culture] : null;
-  const free = f.etat === "vide" || f.etat === "fletri";
-  const speed = f.serre ? s.ref.serre_boost : 1;
-  const est = d.recolte_est[k];
-  const daysLeft = ref && (f.etat === "pousse" || f.etat === "seme") ? ((100 - f.croissance) / 100) * ref.jours / speed : 0;
-  const engrais = f.engrais_jusqua > s.minute;
-  const growing = f.etat === "seme" || f.etat === "pousse";
-  const q = d.qualite_champs[k];
-  const actions = [];
-  if (f.etat === "mur") actions.push(`<button class="btn green" ${A({ type: "recolter", champ: k })}>${icon("wheat")}Récolter ~${est} kg</button>`);
-  if (f.etat !== "vide") actions.push(`<button class="btn ${f.etat === "mur" ? "ghost" : ""}" ${A({ type: "arroser", champ: k })}>${icon("drop")}Arroser · 600 L</button>`);
-  let rain = "";
-  if (d.pluie && f.etat !== "vide") {
-    rain = f.serre ? `<div class="note warn">${icon("rain")}Il pleut, mais pas sous la serre : arrosez-la vous-même.</div>`
+  const f = s.champs[k], beds = f.planches, n = beds.length;
+  const i = Math.min(bedSel[k] || 0, n - 1);
+  const b = beds[i], [st, c] = FIELD_STATE[b.etat];
+  const ref = b.culture ? s.ref.cultures[b.culture] : null;
+  const free = bedFree(b), allFree = beds.every(bedFree), planted = beds.some((x) => x.etat !== "vide");
+  const speed = (f.serre ? s.ref.serre_boost : 1) * (s.technologies.includes("desherbeur") ? s.ref.desherbeur : 1);
+  const est = d.recolte_est[k][i], q = d.qualite_champs[k][i];
+  const daysLeft = ref && (b.etat === "pousse" || b.etat === "seme") ? ((100 - b.croissance) / 100) * ref.jours / speed : 0;
+  const engrais = b.engrais_jusqua > s.minute;
+  const growing = b.etat === "seme" || b.etat === "pousse";
+  const mixed = d.association[k];
+  const bedLbl = (j) => (n > 1 ? `Planche ${j + 1}` : "Culture");
+
+  // ---- la parcelle : sol, arrosage, découpage en planches
+  const crops = cropsLabel(s, f);
+  let html = `<div class="zone-card"><div class="zone-top"><div class="zone-ico ${f.serre ? "glass" : ""}">${icon(fieldIcon(f))}</div>
+    <div><div class="zone-name">${d.noms_champs[k]}</div><div class="muted small">${crops || "Libre — choisissez quoi semer"}</div></div>
+    ${mixed ? `<span class="pill-tag assoc" title="Plusieurs cultures sur la même parcelle">🤝 +${Math.round((s.ref.association - 1) * 100)} %</span>` : ""}</div>`;
+  html += meter("Humidité du sol", f.humidite, f.humidite < 20 ? "red" : "blue");
+  if (d.pluie && planted) {
+    html += f.serre ? `<div class="note warn">${icon("rain")}Il pleut, mais pas sous la serre : arrosez-la vous-même.</div>`
       : `<div class="note info">${icon("rain")}Il pleut : la pluie arrose cette parcelle toute seule.</div>`;
   }
-  const sub = ref && !(f.etat === "fletri") ? `Culture : ${ref.emoji} ${ref.nom}` : f.etat === "fletri" ? `${ref.nom} flétries — ressemez` : "Libre — choisissez quoi semer";
-  let html = `<div class="zone-card"><div class="zone-top"><div class="zone-ico ${f.serre ? "glass" : ""}">${icon(fieldIcon(f))}</div><div><div class="zone-name">${d.noms_champs[k]}</div><div class="muted small">${sub}</div></div><span class="pill-tag ${c}">${st}</span></div>`;
+  html += `<div class="beds-head"><b>Planches</b><div class="seg">${[1, 2, 3].slice(0, s.ref.max_planches).map((m) =>
+    `<button class="${m === n ? "on" : ""}" ${A({ type: "diviser", champ: k, planches: m })} ${allFree && m !== n ? "" : "disabled"} title="${allFree ? `Découper en ${m} planche${m > 1 ? "s" : ""}` : "Récoltez tout pour redécouper"}">${m}</button>`).join("")}</div></div>`;
+  html += `<div class="beds" style="grid-template-columns:repeat(${n},1fr)">${beds.map((x, j) => {
+    const r = x.culture ? s.ref.cultures[x.culture] : null, [bst, bc] = FIELD_STATE[x.etat];
+    return `<button class="bed ${j === i ? "on" : ""} ${x.etat}" ${A({ type: "bed", champ: k, i: j })}>
+      <span class="bed-emo">${r && x.etat !== "vide" ? r.emoji : "🟫"}</span><b>${n > 1 ? `Planche ${j + 1}` : r && x.etat !== "vide" ? r.nom : "Libre"}</b>
+      <small class="pill-tag ${bc}">${x.etat === "pousse" || x.etat === "seme" ? pct(x.croissance) : bst}</small></button>`;
+  }).join("")}</div>`;
+  if (n > 1 && !allFree) html += `<div class="muted small" style="margin-top:8px">Pour redécouper la parcelle, récoltez d'abord toutes les planches.</div>`;
+  if (n === 1 && allFree) html += `<div class="muted small" style="margin-top:8px">Astuce : découpez la parcelle en 2 ou 3 planches pour y mettre plusieurs cultures. Deux cultures différentes s'entraident : <b>+${Math.round((s.ref.association - 1) * 100)} % de récolte</b>.</div>`;
+  if (planted) html += `<div class="actions"><button class="btn ghost" ${A({ type: "arroser", champ: k })}>${icon("drop")}Arroser la parcelle · 600 L</button></div>`;
+  html += `</div>`;
+
+  // ---- la planche sélectionnée
+  const sub = ref && b.etat !== "fletri" && b.etat !== "vide" ? `${ref.emoji} ${ref.nom}` : b.etat === "fletri" ? `${ref.nom} flétries — ressemez` : "Libre — choisissez quoi semer";
+  html += `<div class="zone-card"><div class="card-head"><h3>${bedLbl(i)} <span class="muted small" style="font-weight:600">${sub}</span></h3><span class="pill-tag ${c}">${st}</span></div>`;
   if (ref && !free) {
-    html += `<div class="kv"><div><b>${pct(f.croissance)}</b><span>Croissance</span></div><div><b>${pct(f.sante)}</b><span>Santé</span></div><div><b>${est} kg</b><span>Récolte est.</span></div></div>
-      ${meter("Croissance", f.croissance, "", daysLeft ? `encore ~${nf0.format(Math.ceil(daysLeft * 24))} h` : pct(f.croissance))}`;
+    html += `<div class="kv"><div><b>${pct(b.croissance)}</b><span>Croissance</span></div><div><b>${pct(b.sante)}</b><span>Santé</span></div><div><b>${est} kg</b><span>Récolte est.</span></div></div>
+      ${meter("Croissance", b.croissance, "", daysLeft ? `encore ~${nf0.format(Math.ceil(daysLeft * 24))} h` : pct(b.croissance))}
+      ${meter("Santé des plants", b.sante, barCls(b.sante))}
+      ${meter(`Qualité de la récolte ${b.chimique ? "" : bioTag(1)}`, q, barCls(q), `${stars(q)} ${q}/100`)}`;
+    if (b.etat === "mur") html += `<div class="actions"><button class="btn green" ${A({ type: "recolter", champ: k, planche: i })}>${icon("wheat")}Récolter ~${est} kg</button></div>`;
+  } else if (free) {
+    html += `<div class="muted small">${n > 1 ? `Cette planche occupe 1/${n} de la parcelle.` : "Toute la parcelle est disponible."}</div>`;
   }
-  html += meter("Humidité du sol", f.humidite, f.humidite < 20 ? "red" : "blue");
-  if (ref && !free) {
-    html += meter("Santé des plants", f.sante, barCls(f.sante));
-    html += meter(`Qualité de la récolte ${f.chimique ? "" : bioTag(1)}`, q, barCls(q), `${stars(q)} ${q}/100`);
-  }
-  html += rain;
-  if (actions.length) html += `<div class="actions">${actions.join("")}</div>`;
   html += `</div>`;
   if (growing) {
-    html += `<div class="zone-card"><div class="card-head"><h3>${icon("sprout")} Engrais</h3>${engrais ? `<span class="pill-tag">Actif · ×${nf1.format(f.boost)}</span>` : ""}</div>
+    html += `<div class="zone-card"><div class="card-head"><h3>${icon("sprout")} Engrais · ${bedLbl(i).toLowerCase()}</h3>${engrais ? `<span class="pill-tag">Actif · ×${nf1.format(b.boost)}</span>` : ""}</div>
       <div class="ferti">
-        <button class="ferti-opt bio" ${A({ type: "fertiliser", champ: k, engrais: "fumier" })} ${s.stock.fumier < 50 ? "disabled" : ""}>
+        <button class="ferti-opt bio" ${A({ type: "fertiliser", champ: k, planche: i, engrais: "fumier" })} ${s.stock.fumier < 50 ? "disabled" : ""}>
           <b>${icon("poop")}Fumier · bio</b><small>50 kg (stock ${nf0.format(s.stock.fumier)} kg) · pousse ×1,5 · qualité en hausse</small></button>
-        <button class="ferti-opt chem" ${A({ type: "fertiliser", champ: k, engrais: "chimique" })} ${s.argent < s.ref.prix_chimique ? "disabled" : ""}>
+        <button class="ferti-opt chem" ${A({ type: "fertiliser", champ: k, planche: i, engrais: "chimique" })} ${s.argent < s.ref.prix_chimique ? "disabled" : ""}>
           <b>${icon("sparkle")}Engrais chimique · ${s.ref.prix_chimique} €</b><small>pousse ×1,8 · +20 % de récolte · qualité en baisse · <u>plus bio</u> (ni le miel)</small></button>
       </div></div>`;
   }
-  if (free) html += cropPicker(s, k, f, speed);
-  html += greenhouseCard(s, d, k, f, free);
+  if (free) html += cropPicker(s, k, f, speed, i);
+  html += greenhouseCard(s, d, k, f, allFree);
+  const tech = s.technologies.map((t) => `${s.ref.technologies[t].emoji} ${s.ref.technologies[t].nom}`).join(", ");
   html += `<div class="zone-card"><ul class="mini-list">
       <li>Arrosage intelligent <span>${s.ameliorations.includes("arrosage") ? "Actif" : "Non installé"}</span></li>
-      <li>Culture <span>${!ref || free ? "—" : f.chimique ? "Conventionnelle" : "🌿 Bio"}</span></li>
+      <li>Technologies <span>${tech || "Aucune"}</span></li>
+      <li>Culture <span>${!ref || free ? "—" : b.chimique ? "Conventionnelle" : "🌿 Bio"}</span></li>
       ${d.pollinisation ? `<li>Pollinisation des abeilles <span>+${d.pollinisation} % de récolte</span></li>` : ""}
       <li>Fumier en stock <span>${nf0.format(s.stock.fumier)} kg</span></li>
       <li>Eau disponible <span>${nf0.format(s.reservoir.niveau)} L</span></li>
-      ${ref ? `<li>Cours du jour <span>${nf2.format(s.prix[f.culture])} €/kg</span></li>` : ""}</ul></div>`;
+      ${ref ? `<li>Cours du jour <span>${nf2.format(s.prix[b.culture])} €/kg</span></li>` : ""}</ul></div>`;
   return html;
 }
 
-function cropPicker(s, k, f, speed) {
-  const size = s.ref.parcelles[k].taille * (s.ameliorations.includes("tracteur") ? s.ref.tracteur : 1);
+function cropPicker(s, k, f, speed, i) {
+  const n = f.planches.length;
+  const size = (s.ref.parcelles[k].taille / n) * (s.ameliorations.includes("tracteur") ? s.ref.tracteur : 1);
+  // cultures déjà en terre sur les autres planches : semer autre chose déclenche l'association
+  const others = new Set(f.planches.filter((x, j) => j !== i && ["seme", "pousse", "mur"].includes(x.etat)).map((x) => x.culture));
   const crops = Object.entries(s.ref.cultures).sort(([, a], [, b]) => (a.serre ? 1 : 0) - (b.serre ? 1 : 0));
   const btns = crops.map(([c, r]) => {
-    const kg = Math.round(r.rendement * size);
+    const assoc = others.size && !(others.size === 1 && others.has(c));
+    const kg = Math.round(r.rendement * size * (assoc ? s.ref.association : 1));
     const perDay = (kg * s.prix[c] - r.graines) / (r.jours / speed);
     const locked = r.serre && !f.serre;
     const poor = s.argent < r.graines;
-    return `<button class="crop ${r.serre ? "serre-only" : ""}" ${A({ type: "semer", champ: k, culture: c })} ${locked || poor ? "disabled" : ""}
-        title="${locked ? "Uniquement sous serre" : `${r.nom} : ${r.jours / speed} j, ~${kg} kg`}">
+    return `<button class="crop ${r.serre ? "serre-only" : ""}" ${A({ type: "semer", champ: k, planche: i, culture: c })} ${locked || poor ? "disabled" : ""}
+        title="${locked ? "Uniquement sous serre" : `${r.nom} : ${nf1.format(r.jours / speed)} j, ~${kg} kg`}">
       <span class="emo">${r.emoji}</span><b>${r.nom}</b>
       <small>${nf1.format(r.jours / speed)} j · graines ${r.graines} €</small>
-      <span class="gain">${locked ? `${icon("lock")}Sous serre` : `≈ ${eur(perDay)} / jour`}</span></button>`;
+      <span class="gain">${locked ? `${icon("lock")}Sous serre` : `≈ ${eur(perDay)} / jour${assoc ? " · 🤝" : ""}`}</span></button>`;
   }).join("");
-  return `<div class="zone-card"><div class="card-head"><h3>Que voulez-vous semer ?</h3></div>
+  return `<div class="zone-card"><div class="card-head"><h3>Que semer ${n > 1 ? `sur la planche ${i + 1}` : ""} ?</h3></div>
     <div class="crop-grid">${btns}</div>
-    <div class="muted small" style="margin-top:10px">Gain estimé au prix du jour, plants en pleine santé.</div></div>`;
+    <div class="muted small" style="margin-top:10px">Gain estimé au prix du jour, plants en pleine santé.${others.size ? ` 🤝 = association avec ${[...others].map((c) => s.ref.cultures[c].nom.toLowerCase()).join(" et ")} : +${Math.round((s.ref.association - 1) * 100)} % de récolte.` : ""}</div></div>`;
+}
+
+// technologies modernes : résumé (ferme) ou fiches d'achat (marché)
+const TECH_ICON = { drone: "drone", desherbeur: "robot", semoir: "seeder", recolteur: "basket" };
+function techStatus(s, d, t) {
+  if (t === "drone") return d.drone_actif ? ["En vol", ""] : ["Au sol : orage", "warn"];
+  return ["En service", ""];
+}
+function techCard(s, d, compact) {
+  const owned = s.technologies;
+  if (compact) {
+    if (!owned.length) return "";
+    return `<div class="zone-card"><div class="card-head"><h3>${icon("robot")} Technologies</h3><span class="pill-tag info">${owned.length} / ${Object.keys(s.ref.technologies).length}</span></div>
+      <ul class="mini-list">${owned.map((t) => { const [st, c] = techStatus(s, d, t); return `<li>${s.ref.technologies[t].emoji} ${s.ref.technologies[t].nom}<span class="pill-tag ${c}">${st}</span></li>`; }).join("")}</ul></div>`;
+  }
+  return Object.entries(s.ref.technologies).map(([t, x]) => {
+    const has = owned.includes(t), [st, c] = techStatus(s, d, t);
+    return `<div class="upg tech ${has ? "owned" : ""}"><div class="tech-top"><div class="zone-ico tech-ico">${icon(TECH_ICON[t])}</div><span class="tech-emo">${x.emoji}</span></div>
+      <h4>${x.nom}</h4><p>${x.desc}</p><div class="tech-cost"><span>Entretien</span><b>${x.entretien} €/jour</b></div>
+      ${has ? `<span class="pill-tag ${c}">${icon("check")} ${st}</span>` : `<button class="btn" ${A({ type: "technologie", tech: t })} ${s.argent < x.prix ? "disabled" : ""}>Acheter · ${eur(x.prix)}</button>`}</div>`;
+  }).join("");
 }
 
 function greenhouseCard(s, d, k, f, free) {
@@ -445,6 +507,7 @@ function housePanel(s, d) {
     <div class="actions"><button class="btn" ${A({ type: "goto", view: "marche" })}>${icon("store")}Aller au marché</button></div></div>
     ${beeCard(s, d)}
     ${windCard(s, d)}
+    ${techCard(s, d, true)}
     <div class="zone-card"><div class="card-head"><h3>Améliorations</h3></div><ul class="mini-list">${ups}</ul></div>`;
 }
 
@@ -590,7 +653,7 @@ function renderWeather(s, d) {
 function farmAdvice(s, d) {
   const out = [], week = d.semaine, name = (k) => d.noms_champs[k];
   const fields = Object.keys(s.champs);
-  const growing = (k) => ["seme", "pousse", "mur"].includes(s.champs[k].etat);
+  const growing = (k) => s.champs[k].planches.some((b) => ["seme", "pousse", "mur"].includes(b.etat));
   const rainSoon = week.slice(0, 3).findIndex((w) => w.risque >= 90);
   const dry = fields.filter((k) => growing(k) && s.champs[k].humidite < 50).sort((a, b) => s.champs[a].humidite - s.champs[b].humidite);
   if (dry.length) {
@@ -610,11 +673,11 @@ function farmAdvice(s, d) {
   const stormIdx = week.findIndex((w, i) => i <= 2 && w.type === "orage");
   if (stormIdx >= 0) {
     const open = fields.filter((k) => !s.champs[k].serre);
-    const ripe = open.filter((k) => s.champs[k].etat === "mur"), exposed = open.filter(growing);
+    const ripe = open.filter((k) => s.champs[k].planches.some((b) => b.etat === "mur")), exposed = open.filter(growing);
     out.push({ cls: "bad", ic: "storm", when: week[stormIdx].jour, title: "Orage annoncé",
       text: ripe.length ? `Récoltez la ${name(ripe[0])} avant : l'orage abîme les cultures en plein champ.`
         : exposed.length ? "Il peut abîmer une parcelle en plein champ (−25 % de santé). Les serres protègent leurs cultures." : "Vos parcelles ne risquent rien pour l'instant.",
-      btn: ripe.length ? { label: `Récolter la ${name(ripe[0])}`, act: { type: "recolter", champ: ripe[0] } } : null });
+      btn: ripe.length ? { label: `Récolter la ${name(ripe[0])}`, act: { type: "recolter", champ: ripe[0], planche: s.champs[ripe[0]].planches.findIndex((b) => b.etat === "mur") } } : null });
   }
   const heatIdx = week.findIndex((w, i) => i <= 2 && w.type === "canicule");
   if (heatIdx >= 0) {
@@ -832,6 +895,8 @@ function stallPanel(s, d, id) {
     rows += shopRow("plus", `Terrain · ${Object.keys(s.champs).length} / ${s.ref.terrains_max} parcelles`,
       t ? `${t.nom} · ${s.ref.terrain_entretien} €/jour d'entretien` : "Tous les terrains sont achetés",
       t ? `<button class="btn sm" ${A({ type: "acheter_parcelle" })} ${s.argent < t.prix ? "disabled" : ""}>${eur(t.prix)}</button>` : done);
+    rows += Object.entries(s.ref.technologies).map(([k, x]) => shopRow(TECH_ICON[k], `${x.emoji} ${x.nom}`, `${x.desc} Entretien ${x.entretien} €/jour.`,
+      s.technologies.includes(k) ? done : `<button class="btn sm" ${A({ type: "technologie", tech: k })} ${s.argent < x.prix ? "disabled" : ""}>${eur(x.prix)}</button>`)).join("");
     rows += Object.entries(s.ref.ameliorations).map(([k, u]) => shopRow(upIcons[k], u.nom, u.desc,
       s.ameliorations.includes(k) ? done : `<button class="btn sm" ${A({ type: "ameliorer", amelioration: k })} ${s.argent < u.prix ? "disabled" : ""}>${eur(u.prix)}</button>`)).join("");
     const pitch = !s.ruches ? "Des ruches ? Vos fraises vous diront merci, et le miel se vend bien !"
@@ -896,6 +961,7 @@ function renderMarket(s, d) {
     ? `${d.jour_semaine}, jour de marché jusqu'à ${s.ref.marche_heures[1]} h · ${MarketMap.crowdSize()} visiteurs sur la place`
     : `Marché fermé · prochain : ${d.prochain_marche} · les boutiques restent ouvertes`;
 
+  setHTML($("#tech"), techCard(s, d, false));
   const upIcons = { arrosage: "drop", distributeur: "bowl", reservoir: "tank", cloture: "fence", tracteur: "tractor" };
   setHTML($("#upgrades"), Object.entries(s.ref.ameliorations).map(([k, u]) => {
     const owned = s.ameliorations.includes(k);
@@ -913,7 +979,7 @@ function renderMarket(s, d) {
   } else {
     const targets = FarmMap.FIELDS.filter((k) => !s.champs[k].serre);
     seBody = targets.length ? `<div class="actions">${targets.map((k) => {
-      const free = ["vide", "fletri"].includes(s.champs[k].etat);
+      const free = s.champs[k].planches.every(bedFree);
       return `<button class="btn sm" ${A({ type: "construire", batiment: "serre", champ: k })} ${!free || s.argent < se.prix ? "disabled" : ""} title="${free ? "" : "Parcelle occupée : récoltez d'abord"}">${d.noms_champs[k]}</button>`;
     }).join("")}</div><span class="muted small">${eur(se.prix)} · la parcelle doit être libre</span>`
       : `<span class="pill-tag">${icon("check")} Toutes les parcelles sont sous serre</span>`;

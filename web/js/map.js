@@ -101,7 +101,7 @@ const FarmMap = (() => {
     s += tree(48, 58, 18) + tree(298, 140, 15, "#5DA548");
     for (let x = 220; x < 290; x += 18) s += bush(x, 222, 8);
     // cour gravillonnée où le tracteur dort la nuit
-    s += `<rect x="290" y="206" width="44" height="48" rx="8" fill="#E2D3B2"/><path d="M296 214h32M296 224h32M296 234h32M296 244h32" stroke="#D3C19B" stroke-width="1.5" stroke-dasharray="3 4"/>`;
+    s += `<rect x="290" y="204" width="72" height="54" rx="8" fill="#E2D3B2"/><path d="M296 214h60M296 224h60M296 234h60M296 244h60" stroke="#D3C19B" stroke-width="1.5" stroke-dasharray="3 4"/>`;
 
     // ---- haies des champs
     for (const k of FIELDS) {
@@ -241,34 +241,45 @@ const FarmMap = (() => {
     return s;
   }
 
-  function fieldSVG(key, f) {
-    const [x0, y0, w, h] = ZONES[key].box;
-    const x = x0 + 22, y = y0 + 22, bw = w - 44, bh = h - 44;
-    let s = `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="14" fill="${soilColor(f.humidite)}"/>`;
-    const sp = SPACING[f.culture] || 24;
-    const rows = Math.max(3, Math.round(bh / sp)), cols = Math.max(6, Math.round(bw / sp));
+  // une planche : sol, rangs, plants (une parcelle peut en avoir jusqu'à 3, séparées par un passage enherbé)
+  function bedSVG(key, idx, b, x, y, bw, bh, hum, n) {
+    let s = `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="${n > 1 ? 12 : 14}" fill="${soilColor(hum)}"/>`;
+    const sp = SPACING[b.culture] || 24;
+    const rows = Math.max(n > 1 ? 1 : 3, Math.round(bh / sp)), cols = Math.max(6, Math.round(bw / sp));
     const dy = bh / rows, dx = bw / cols;
     for (let r = 0; r < rows; r++) {
       s += `<rect x="${x + 8}" y="${y + r * dy + dy * .5 - 4}" width="${bw - 16}" height="8" rx="4" fill="#000" opacity=".13"/>`;
     }
-    if (f.humidite < 18) {
-      for (let i = 0; i < 14; i++) {
-        const cx = x + 10 + seeded(i + key.length) * (bw - 20), cy = y + 10 + seeded(i * 3 + key.length) * (bh - 20);
+    if (hum < 18) {
+      for (let i = 0; i < 14 / n; i++) {
+        const cx = x + 10 + seeded(i + key.length + idx * 31) * (bw - 20), cy = y + 6 + seeded(i * 3 + key.length + idx) * Math.max(4, bh - 16);
         s += `<path d="M${cx} ${cy}l6 4l-3 6l7 3" stroke="#9C7048" stroke-width="1.5" fill="none"/>`;
       }
     }
-    if (f.humidite > 75) s += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="14" fill="#4C93D1" opacity=".08"/>`;
-    if (f.etat !== "vide" && f.culture) {
-      const g = Math.max(0, Math.min(1, f.croissance / 100));
-      const dead = f.etat === "fletri", ripe = f.etat === "mur";
+    if (hum > 75) s += `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="14" fill="#4C93D1" opacity=".08"/>`;
+    if (b.etat !== "vide" && b.culture) {
+      const g = Math.max(0, Math.min(1, b.croissance / 100));
+      const dead = b.etat === "fletri", ripe = b.etat === "mur";
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const px = x + c * dx + dx / 2, py = y + r * dy + dy / 2;
-          if (f.croissance < 6 && !dead) { s += `<circle cx="${px}" cy="${py}" r="2" fill="#9AD46B"/>`; continue; }
-          s += plantSVG(f.culture, px, py, g, ripe, dead, seeded(r * 31 + c * 7 + key.length), c);
+          if (b.croissance < 6 && !dead) { s += `<circle cx="${px}" cy="${py}" r="2" fill="#9AD46B"/>`; continue; }
+          s += plantSVG(b.culture, px, py, g, ripe, dead, seeded(r * 31 + c * 7 + key.length + idx * 101), c);
         }
       }
     }
+    return s;
+  }
+
+  function fieldSVG(key, f) {
+    const [x0, y0, w, h] = ZONES[key].box;
+    const x = x0 + 22, y = y0 + 22, bw = w - 44, bh = h - 44;
+    const n = f.planches.length;
+    let s = "";
+    f.planches.forEach((b, i) => {
+      const [bx, by, bbw, bbh] = bedBox(key, i, n);
+      s += bedSVG(key, i, b, bx, by, bbw, bbh, f.humidite, n);
+    });
     if (f.serre) s += greenhouseSVG(x, y, bw, bh);
     return s;
   }
@@ -391,22 +402,168 @@ const FarmMap = (() => {
     for (const id of ["map-heat", "map-night"]) svg.querySelector(`#${id}`).setAttribute("height", H);
     if (focused && !ZONES[focused]) focused = null;
     setVB(boxFor(focused));
-    tractor.reset();
+    vehicles.forEach((v) => v.reset());
   }
 
-  // ------------------------------------------------------------------ tracteur
-  // Il circule sur les chemins, va travailler les parcelles en plein champ (passes aller-retour, avec
-  // traces de roues), et rentre dormir dans la cour la nuit. Rouge d'origine, vert une fois le neuf acheté.
-  const tractor = (() => {
-    const T = { x: 312, y: 232, a: -Math.PI / 2, path: [], mode: "idle", wait: 2, puff: 0, dist: 0, lastRut: 0, plow: false };
-    let g, body, hood, lights, plowEl, treads = [];
-    const PARK = { x: 312, y: 232 };
+  // ------------------------------------------------------------------ véhicules
+  // Tracteur et robots roulent sur les chemins, vont travailler les planches (passes aller-retour)
+  // et rentrent dans la cour la nuit. Le drone, lui, vole en ligne droite au-dessus des champs.
+  const onV = (p) => Math.abs(p.x - RX) < 1;
+  const onRoad = (p) => onV(p) || roadsY.some((y) => Math.abs(p.y - y) < 1);
+  const nightTime = (state) => { const h = state.derive.heure_dec; return h >= 21 || h < 6; };
+  const growingBeds = (f) => f.planches.filter((b) => b.etat === "seme" || b.etat === "pousse");
+  // itinéraire par les chemins : on rejoint le chemin vertical, puis la bonne route horizontale
+  function route(from, to) {
+    const pts = [];
+    if (onV(from) && onV(to)) return [to];
+    if (!onV(from) && !onV(to) && Math.abs(from.y - to.y) < 1) return [to];
+    if (!onV(from)) pts.push({ x: RX, y: from.y });
+    if (!onV(to)) pts.push({ x: RX, y: to.y });
+    pts.push(to);
+    return pts;
+  }
+  function nearestRoad(p) {
+    let best = { x: RX, y: Math.max(20, Math.min(H - 20, p.y)) }, d = Math.abs(p.x - RX);
+    for (const y of roadsY) if (Math.abs(p.y - y) < d) { d = Math.abs(p.y - y); best = { x: Math.max(30, Math.min(W - 30, p.x)), y }; }
+    return best;
+  }
+  function roadEntry(box) {
+    const [x, y, w, h] = box;
+    let ry = roadsY[0], d = 1e9;
+    for (const r of roadsY) {
+      const dd = Math.min(Math.abs(r - y), Math.abs(r - (y + h)));
+      if (dd < d) { d = dd; ry = r; }
+    }
+    return { x: x + w / 2, y: ry, above: ry < y };
+  }
+  // rectangle d'une planche dans sa parcelle (mêmes calculs que le dessin)
+  function bedBox(key, i, n) {
+    const [x0, y0, w, h] = ZONES[key].box;
+    const x = x0 + 22, y = y0 + 22, bw = w - 44, bh = h - 44, gap = n > 1 ? 12 : 0;
+    const bedH = (bh - gap * (n - 1)) / n;
+    return [x, y + i * (bedH + gap), bw, bedH];
+  }
 
-    function build(parent) {
-      g = el("g", { class: "tractor" }, parent);
-      g.innerHTML = `
+  function makeVehicle(cfg) {
+    const T = { x: cfg.park.x, y: cfg.park.y, a: -Math.PI / 2, path: [], mode: "sleep", wait: rnd(0, 3), puff: 0, dist: 0, lastRut: 0, work: false, on: false };
+    let g = null, lastState = null;
+    const parkPath = (here) => {
+      const r0 = nearestRoad(here), start = onRoad(here) ? here : r0;
+      return [...(onRoad(here) ? [] : [r0]), ...route(start, { x: cfg.park.x, y: 282 }), { x: cfg.park.x, y: cfg.park.y }];
+    };
+    function plan(state) {
+      const here = { x: T.x, y: T.y };
+      const parked = Math.hypot(T.x - cfg.park.x, T.y - cfg.park.y) < 2;
+      const job = nightTime(state) ? null : cfg.choose(state);
+      if (!job) {
+        if (parked) { T.mode = "sleep"; return; }
+        if (!nightTime(state) && cfg.roam && Math.random() < .5) {
+          const ends = roadsY.flatMap((y) => [{ x: 40, y }, { x: RX, y }, { x: W - 40, y }]).concat([{ x: RX, y: 30 }, { x: RX, y: H - 30 }]);
+          const from = onRoad(here) ? here : nearestRoad(here);
+          T.path = [...(onRoad(here) ? [] : [from]), ...route(from, ends[Math.floor(Math.random() * ends.length)])];
+          T.mode = "roam";
+          return;
+        }
+        T.path = parkPath(here); T.mode = "park";
+        return;
+      }
+      // travail : passes aller-retour dans une planche
+      const [key, i] = job, n = state.champs[key].planches.length;
+      const [bx, by, bw, bh] = bedBox(key, i, n), e = roadEntry(ZONES[key].box), box = ZONES[key].box;
+      const x0 = bx + cfg.margin, x1 = bx + bw - cfg.margin;
+      const edgeY = e.above ? box[1] + 22 + 12 : box[1] + box[3] - 22 - 12;
+      const step = cfg.rowStep, nRows = Math.max(1, Math.floor((bh - 16) / step) + 1);
+      const k = Math.min(nRows, cfg.passes());
+      const first = Math.floor(Math.random() * (nRows - k + 1));
+      const rows = Array.from({ length: k }, (_, j) => (nRows === 1 ? by + bh / 2 : by + 8 + (first + j) * ((bh - 16) / (nRows - 1 || 1))));
+      if (!e.above) rows.reverse();
+      const passes = [];
+      rows.forEach((ry, j) => {
+        const [a, b] = j % 2 ? [x1, x0] : [x0, x1];
+        passes.push({ x: a, y: ry, work: j > 0 }, { x: b, y: ry, work: true });
+      });
+      const parked0 = Math.hypot(T.x - cfg.park.x, T.y - cfg.park.y) < 2;
+      const start = parked0 ? [{ x: cfg.park.x, y: 282 }] : onRoad(here) ? [] : [nearestRoad(here)];
+      const from = start.length ? start[start.length - 1] : here;
+      T.path = [...start, ...route(from, { x: e.x, y: e.y }), { x: e.x, y: edgeY }, { x: passes[0].x, y: edgeY }, ...passes,
+        { x: passes[passes.length - 1].x, y: edgeY }, { x: e.x, y: edgeY }, { x: e.x, y: e.y }];
+      T.mode = "work";
+    }
+    function step(dt) {
+      if (!g || !lastState || !T.on) return;
+      const moving = gameRunning;
+      if (T.mode === "sleep") {
+        T.work = false;
+        if (moving && (T.wait -= dt) <= 0) { T.wait = rnd(2, 5); plan(lastState); }
+      } else if (moving && T.wait > 0) T.wait -= dt;
+      else if (moving && !T.path.length) {
+        if (T.mode === "park") { T.mode = "sleep"; T.a = -Math.PI / 2; T.wait = rnd(3, 6); }
+        else { T.wait = rnd(1, 3); plan(lastState); }
+      } else if (moving) {
+        const p = T.path[0], dx = p.x - T.x, dy = p.y - T.y, d = Math.hypot(dx, dy);
+        T.work = T.mode === "work" && !!p.work;
+        const speed = (T.work ? cfg.workSpeed : cfg.speed) * (cfg.fast && cfg.fast() ? 1.25 : 1) * (rainy ? .8 : 1);
+        if (d < .5) T.path.shift();
+        else {
+          const ta = Math.atan2(dy, dx);
+          let da = ta - T.a; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+          T.a += da * Math.min(1, dt * 6);
+          const v = Math.min(d, speed * dt * (Math.abs(da) > 1.2 ? .25 : 1));
+          T.x += (dx / d) * v; T.y += (dy / d) * v; T.dist += v;
+          if (T.work && cfg.rut && T.dist - T.lastRut > 7) { T.lastRut = T.dist; cfg.rut(T); }
+        }
+      }
+      if (cfg.puffs && T.mode !== "sleep" && gameRunning && (T.puff -= dt) <= 0) {
+        T.puff = T.work ? .18 : (T.path.length ? .3 : .7);
+        puff(T.x + Math.cos(T.a) * 6 + Math.sin(T.a) * 7.5, T.y + Math.sin(T.a) * 6 - Math.cos(T.a) * 7.5);
+      }
+      if (cfg.frame) cfg.frame(g, T, dt);
+      g.setAttribute("transform", `translate(${T.x.toFixed(1)} ${T.y.toFixed(1)}) rotate(${(T.a * 57.3).toFixed(1)})`);
+    }
+    function update(state) {
+      lastState = state;
+      const on = cfg.enabled(state);
+      if (on && !g) { g = el("g", { class: "vehicle" }, layers.tractor); g.innerHTML = cfg.svg; T.x = cfg.park.x; T.y = cfg.park.y; T.mode = "sleep"; }
+      if (!on && g) { g.remove(); g = null; }
+      T.on = on;
+      if (g && cfg.paint) cfg.paint(g, state, T);
+    }
+    function reset() {
+      if (!g) return;
+      T.path = [];
+      if (T.mode !== "sleep") { const p = nearestRoad({ x: T.x, y: T.y }); T.x = p.x; T.y = p.y; T.mode = "idle"; T.wait = .5; }
+    }
+    return { step, update, reset, state: T };
+  }
+
+  function rut(T, w = 30) {
+    const r = el("rect", { x: -3, y: -w / 2, width: 6, height: w, rx: 2, class: "rut",
+      transform: `translate(${(T.x - Math.cos(T.a) * 26).toFixed(1)} ${(T.y - Math.sin(T.a) * 26).toFixed(1)}) rotate(${(T.a * 57.3).toFixed(0)})` }, layers.ruts);
+    setTimeout(() => r.remove(), 40000);
+  }
+  function puff(x, y) {
+    const c = el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: 4, class: "puff" }, layers.puffs);
+    setTimeout(() => c.remove(), 1700);
+  }
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const openFields = (state) => FIELDS.filter((k) => state.champs[k] && !state.champs[k].serre);
+
+  // Tracteur : laboure les planches libres, bine celles qui poussent. Rouge, puis vert une fois le neuf acheté.
+  const tractor = makeVehicle({
+    park: { x: 312, y: 232 }, speed: 58, workSpeed: 26, margin: 22, rowStep: 26, passes: () => 3 + Math.floor(Math.random() * 3),
+    roam: true, puffs: true, rut: (T) => rut(T), fast: () => upgraded,
+    enabled: () => true,
+    choose: (state) => {
+      if (Math.random() > .55) return null;
+      const beds = openFields(state).flatMap((k) => state.champs[k].planches.map((b, i) => [k, i, b]));
+      if (!beds.length) return null;
+      const free = beds.filter(([, , b]) => b.etat === "vide" || b.etat === "fletri");
+      const [k, i] = free.length && Math.random() < .7 ? pick(free) : pick(beds);
+      return [k, i];
+    },
+    svg: `
         <g class="t-lights" opacity="0"><path d="M22 -9L86 -30L86 4Z M22 9L86 -4L86 30Z" fill="#FFE9A3" opacity=".45"/></g>
-        <g class="t-plow" opacity="0"><rect x="-36" y="-17" width="9" height="34" rx="3" fill="#8A8F94"/><path d="M-27 -12h7M-27 0h7M-27 12h7" stroke="#6C7176" stroke-width="3"/></g>
+        <g class="t-plow" opacity="0"><rect class="t-tool" x="-36" y="-17" width="9" height="34" rx="3" fill="#8A8F94"/><path d="M-27 -12h7M-27 0h7M-27 12h7" stroke="#6C7176" stroke-width="3"/></g>
         <rect x="-19" y="-12" width="44" height="28" rx="7" fill="#000" opacity=".16"/>
         <rect x="-22" y="-19" width="18" height="9" rx="3" fill="#2B2B2B"/><rect x="-22" y="10" width="18" height="9" rx="3" fill="#2B2B2B"/>
         <path class="t-tread" d="M-21 -14.5H-5M-21 14.5H-5" stroke="#555" stroke-width="7" stroke-dasharray="2 2.5"/>
@@ -416,146 +573,137 @@ const FarmMap = (() => {
         <path d="M9 -4h10M9 0h10M9 4h10" stroke="#000" stroke-width="1" opacity=".18"/>
         <rect x="-17" y="-11" width="18" height="22" rx="4" fill="#F4F1EA" stroke="#D5CFC2" stroke-width="1"/>
         <rect x="-14" y="-8" width="12" height="16" rx="2" fill="#fff" opacity=".6"/>
-        <circle cx="6" cy="-7.5" r="2.4" fill="#3A3A3A"/>`;
-      body = g.querySelector(".t-body"); hood = g.querySelector(".t-hood");
-      lights = g.querySelector(".t-lights"); plowEl = g.querySelector(".t-plow");
-      treads = [...g.querySelectorAll(".t-tread")];
-    }
+        <circle cx="6" cy="-7.5" r="2.4" fill="#3A3A3A"/>`,
+    paint: (g, state, T) => {
+      g.querySelector(".t-body").setAttribute("fill", upgraded ? "#3A8A3F" : "#C8392E");
+      g.querySelector(".t-hood").setAttribute("fill", upgraded ? "#2E7234" : "#A72F26");
+      // avec le semoir autonome, le tracteur tire un semoir vert au lieu de la charrue
+      g.querySelector(".t-tool").setAttribute("fill", state.technologies.includes("semoir") ? "#5FA344" : "#8A8F94");
+      g.querySelector(".t-lights").setAttribute("opacity", night > .45 && T.mode !== "sleep" ? 1 : 0);
+    },
+    frame: (g, T) => {
+      g.querySelectorAll(".t-tread").forEach((t) => t.setAttribute("stroke-dashoffset", (-T.dist * .6).toFixed(1)));
+      g.querySelector(".t-plow").setAttribute("opacity", T.work ? 1 : 0);
+    },
+  });
 
-    const onV = (p) => Math.abs(p.x - RX) < 1;
-    // itinéraire par les chemins : on rejoint le chemin vertical, puis la bonne route horizontale
-    function route(from, to) {
-      const pts = [];
-      if (onV(from) && onV(to)) return [to];
-      if (!onV(from) && !onV(to) && Math.abs(from.y - to.y) < 1) return [to];
-      if (!onV(from)) pts.push({ x: RX, y: from.y });
-      if (!onV(to)) pts.push({ x: RX, y: to.y });
-      pts.push(to);
-      return pts;
-    }
-    // point du chemin le plus proche (pour repartir de la cour ou d'un champ)
-    function nearestRoad(p) {
-      let best = { x: RX, y: Math.max(20, Math.min(H - 20, p.y)) }, d = Math.abs(p.x - RX);
-      for (const y of roadsY) if (Math.abs(p.y - y) < d) { d = Math.abs(p.y - y); best = { x: Math.max(30, Math.min(W - 30, p.x)), y }; }
-      return best;
-    }
-    const roadEntry = (box) => {
-      const [x, y, w, h] = box, cx = x + w / 2;
-      let ry = roadsY[0], d = 1e9;
-      for (const r of roadsY) {
-        const dd = Math.min(Math.abs(r - y), Math.abs(r - (y + h)));
-        if (dd < d) { d = dd; ry = r; }
-      }
-      return { x: cx, y: ry, above: ry < y };
-    };
+  // Robot désherbeur : petit, électrique, il longe les rangs des planches qui poussent
+  const weeder = makeVehicle({
+    park: { x: 346, y: 220 }, speed: 34, workSpeed: 13, margin: 18, rowStep: 18, passes: () => 2 + Math.floor(Math.random() * 2),
+    enabled: (state) => state.technologies.includes("desherbeur"),
+    choose: (state) => {
+      const beds = FIELDS.flatMap((k) => state.champs[k].planches.map((b, i) => [k, i, b])).filter(([, , b]) => b.etat === "seme" || b.etat === "pousse");
+      return beds.length ? pick(beds).slice(0, 2) : null;
+    },
+    rut: (T) => { if (Math.random() < .5) { const l = el("circle", { cx: (T.x - Math.cos(T.a) * 10 + rnd(-5, 5)).toFixed(1), cy: (T.y - Math.sin(T.a) * 10 + rnd(-5, 5)).toFixed(1), r: 2, class: "weed" }, layers.ruts); setTimeout(() => l.remove(), 4000); } },
+    svg: `<rect x="-11" y="-9" width="24" height="20" rx="5" fill="#000" opacity=".15"/>
+      <rect x="-10" y="-11" width="7" height="4" rx="1.5" fill="#2B2B2B"/><rect x="4" y="-11" width="7" height="4" rx="1.5" fill="#2B2B2B"/>
+      <rect x="-10" y="7" width="7" height="4" rx="1.5" fill="#2B2B2B"/><rect x="4" y="7" width="7" height="4" rx="1.5" fill="#2B2B2B"/>
+      <rect x="-11" y="-8" width="22" height="16" rx="4" fill="#F08A24"/>
+      <rect x="-8" y="-6" width="14" height="12" rx="2" fill="#2D4A7A"/><path d="M-8 -2h14M-8 2h14M-3 -6v12M2 -6v12" stroke="#6F8FC4" stroke-width=".8"/>
+      <path d="M11 -5l4 -1M11 0h5M11 5l4 1" stroke="#9AA3AB" stroke-width="1.6" stroke-linecap="round"/>
+      <circle class="r-led" cx="8" cy="-5" r="1.4" fill="#7CFC7C"/>`,
+    frame: (g, T) => g.querySelector(".r-led").setAttribute("opacity", T.mode === "sleep" ? .3 : (Math.sin(performance.now() / 180) > 0 ? 1 : .2)),
+  });
 
+  // Robot de récolte : surveille les planches presque mûres (il récolte dès qu'elles sont prêtes)
+  const harvester = makeVehicle({
+    park: { x: 346, y: 246 }, speed: 40, workSpeed: 18, margin: 24, rowStep: 30, passes: () => 2,
+    enabled: (state) => state.technologies.includes("recolteur"),
+    choose: (state) => {
+      const beds = FIELDS.flatMap((k) => state.champs[k].planches.map((b, i) => [k, i, b])).filter(([, , b]) => b.etat === "pousse" && b.croissance > 70);
+      return beds.length && Math.random() < .8 ? pick(beds).slice(0, 2) : null;
+    },
+    svg: `<rect x="-15" y="-11" width="32" height="25" rx="5" fill="#000" opacity=".15"/>
+      <rect x="-14" y="-14" width="9" height="5" rx="2" fill="#2B2B2B"/><rect x="5" y="-14" width="9" height="5" rx="2" fill="#2B2B2B"/>
+      <rect x="-14" y="9" width="9" height="5" rx="2" fill="#2B2B2B"/><rect x="5" y="9" width="9" height="5" rx="2" fill="#2B2B2B"/>
+      <rect x="-15" y="-11" width="30" height="22" rx="5" fill="#EEF1F3" stroke="#C9D0D6" stroke-width="1"/>
+      <rect x="-12" y="-8" width="14" height="16" rx="2" fill="#B5835A"/><path d="M-12 -3h14M-12 2h14" stroke="#8E6638" stroke-width="1"/>
+      <rect x="-12" y="-8" width="14" height="5" rx="1.5" fill="#E2412F" opacity=".85"/><rect x="-12" y="3" width="14" height="5" rx="1.5" fill="#F4D35E" opacity=".85"/>
+      <path class="r-arm" d="M8 0h10" stroke="#5E6B78" stroke-width="3" stroke-linecap="round"/><circle cx="19" cy="0" r="3" fill="#5E6B78"/>
+      <rect x="4" y="-9" width="9" height="4" rx="1" fill="#3A8A3F"/>`,
+    frame: (g, T) => g.querySelector(".r-arm").setAttribute("transform", T.work ? `rotate(${(Math.sin(performance.now() / 260) * 25).toFixed(0)} 8 0)` : ""),
+  });
+
+  // Drone agricole : vole d'une planche en culture à l'autre et pulvérise ; reste sur son aire en cas d'orage
+  const DRONE_PAD = { x: 446, y: 206 };
+  const drone = (() => {
+    const D = { x: DRONE_PAD.x, y: DRONE_PAD.y, a: 0, alt: 0, path: [], spray: false, wait: 2, mist: 0, on: false, grounded: true };
+    let g = null, body = null, shadow = null, pad = null, lastState = null;
+    function build() {
+      pad = el("g", { class: "drone-pad" });
+      svg.insertBefore(pad, layers.ruts);
+      pad.innerHTML = `<circle cx="${DRONE_PAD.x}" cy="${DRONE_PAD.y}" r="15" fill="#5E6B78"/><circle cx="${DRONE_PAD.x}" cy="${DRONE_PAD.y}" r="12" fill="none" stroke="#F2C14E" stroke-width="1.5"/>
+        <text x="${DRONE_PAD.x}" y="${DRONE_PAD.y + 4.5}" text-anchor="middle" class="pad-h">H</text>`;
+      shadow = el("g", { opacity: .2 }, layers.drone);
+      shadow.innerHTML = `<path d="M-9 -9L9 9M9 -9L-9 9" stroke="#000" stroke-width="4"/><circle r="6" fill="#000"/>` +
+        [[-10, -10], [10, -10], [-10, 10], [10, 10]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="7" fill="#000"/>`).join("");
+      g = el("g", {}, layers.drone);
+      body = el("g", {}, g);
+      body.innerHTML = `<path d="M-10 -10L10 10M10 -10L-10 10" stroke="#3C4650" stroke-width="3.2" stroke-linecap="round"/>
+        <rect x="-7" y="-6" width="14" height="12" rx="4" fill="#F4F6F7" stroke="#B9C3CA" stroke-width="1"/><rect x="-3" y="-3" width="6" height="6" rx="2" fill="#3C8CD6"/>
+        <rect x="-5" y="6" width="10" height="4" rx="1.5" fill="#8FB7D6"/>` +
+        [[-10, -10], [10, -10], [-10, 10], [10, 10]].map(([x, y]) => `<g transform="translate(${x} ${y})"><circle r="7.5" fill="#fff" opacity=".35" stroke="#C9D2D9" stroke-width=".8"/>
+          <g class="rotor"><path d="M-7 0H7" stroke="#2B2B2B" stroke-width="1.8" stroke-linecap="round"/></g><circle r="1.6" fill="#2B2B2B"/></g>`).join("") +
+        `<circle class="d-led" cx="0" cy="-7" r="1.6" fill="#E2412F"/>`;
+    }
     function plan(state) {
-      const h = state.derive.heure_dec;
-      const nightTime = h >= 21 || h < 6;
-      const here = { x: T.x, y: T.y };
-      const parked = Math.hypot(T.x - PARK.x, T.y - PARK.y) < 2;
-      if (nightTime) {
-        if (parked) { T.mode = "sleep"; T.wait = 5; return; }
-        const r0 = nearestRoad(here);
-        T.path = [...(onRoad(here) ? [] : [r0]), ...route(onRoad(here) ? here : r0, { x: PARK.x, y: 282 }), { x: PARK.x, y: PARK.y }];
-        T.mode = "park";
-        return;
-      }
-      const start = parked ? [{ x: PARK.x, y: 282 }] : onRoad(here) ? [] : [nearestRoad(here)];
-      const from = start.length ? start[start.length - 1] : here;
-      const fields = FIELDS.filter((k) => state.champs[k] && !state.champs[k].serre);
-      if (fields.length && Math.random() < .55) {
-        // travail au champ : labour d'une parcelle libre, sinon binage entre les rangs
-        const free = fields.filter((k) => ["vide", "fletri"].includes(state.champs[k].etat));
-        const pool = free.length && Math.random() < .7 ? free : fields;
-        const k = pool[Math.floor(Math.random() * pool.length)];
-        const box = ZONES[k].box, e = roadEntry(box);
-        const [x, y, w, hh] = box, x0 = x + 44, x1 = x + w - 44;
-        const edgeY = e.above ? y + 34 : y + hh - 34;
-        const step = 26, nRows = Math.floor((hh - 68) / step) + 1;
-        const n = Math.min(nRows, 3 + Math.floor(Math.random() * 3));
-        const first = Math.floor(Math.random() * (nRows - n + 1));
-        const rows = Array.from({ length: n }, (_, i) => (e.above ? y + 34 + (first + i) * step : y + hh - 34 - (first + i) * step));
-        const passes = [];
-        rows.forEach((ry, i) => {
-          const [a, b] = i % 2 ? [x1, x0] : [x0, x1];
-          passes.push({ x: a, y: ry, work: i > 0 }, { x: b, y: ry, work: true });
-        });
-        T.path = [...start, ...route(from, { x: e.x, y: e.y }), { x: e.x, y: edgeY }, { x: x0, y: rows[0] },
-          ...passes, { x: e.x, y: rows[rows.length - 1] }, { x: e.x, y: edgeY }, { x: e.x, y: e.y }];
-        T.mode = "work";
-      } else {
-        const ends = roadsY.flatMap((y) => [{ x: 40, y }, { x: RX, y }, { x: W - 40, y }]).concat([{ x: RX, y: 30 }, { x: RX, y: H - 30 }]);
-        const to = ends[Math.floor(Math.random() * ends.length)];
-        T.path = [...start, ...route(from, to)];
-        T.mode = "roam";
-      }
+      const beds = FIELDS.flatMap((k) => state.champs[k].planches.map((b, i) => [k, i, b])).filter(([, , b]) => ["seme", "pousse", "mur"].includes(b.etat));
+      if (!beds.length) { D.path = [{ ...DRONE_PAD, land: true }]; D.wait = rnd(4, 8); return; }
+      const [k, i] = pick(beds), n = state.champs[k].planches.length;
+      const [bx, by, bw, bh] = bedBox(k, i, n);
+      const rows = n === 1 ? [by + bh * .25, by + bh * .5, by + bh * .75] : [by + bh * .3, by + bh * .7];
+      D.path = [];
+      rows.forEach((y, j) => {
+        const [a, b] = j % 2 ? [bx + bw - 14, bx + 14] : [bx + 14, bx + bw - 14];
+        D.path.push({ x: a, y, spray: j > 0 }, { x: b, y, spray: true });
+      });
     }
-    const onRoad = (p) => onV(p) || roadsY.some((y) => Math.abs(p.y - y) < 1);
-
-    function rut(x, y, a) {
-      const r = el("rect", { x: -3, y: -15, width: 6, height: 30, rx: 2, class: "rut",
-        transform: `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(a * 57.3).toFixed(0)})` }, layers.ruts);
-      setTimeout(() => r.remove(), 40000);
-    }
-    function puff(x, y) {
-      const c = el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: 4, class: "puff" }, layers.puffs);
-      setTimeout(() => c.remove(), 1700);
-    }
-
-    let lastState = null;
     function step(dt) {
       if (!g || !lastState) return;
-      const moving = gameRunning && T.mode !== "sleep";
-      if (moving && T.wait > 0) T.wait -= dt;
-      else if (moving && !T.path.length) {
-        if (T.mode === "park") { T.mode = "sleep"; T.a = -Math.PI / 2; }
-        else { T.wait = 1 + Math.random() * 3; plan(lastState); }
-      } else if (moving) {
-        const p = T.path[0], dx = p.x - T.x, dy = p.y - T.y, d = Math.hypot(dx, dy);
-        const working = T.mode === "work" && p.work;
-        const speed = (working ? 26 : 58) * (upgraded ? 1.25 : 1) * (rainy ? .8 : 1);
-        if (d < .5) { T.path.shift(); }
-        else {
-          // on tourne d'abord, puis on avance (virages propres aux carrefours)
-          const ta = Math.atan2(dy, dx);
-          let da = ta - T.a; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
-          T.a += da * Math.min(1, dt * 6);
-          const v = Math.min(d, speed * dt * (Math.abs(da) > 1.2 ? .25 : 1));
-          T.x += (dx / d) * v; T.y += (dy / d) * v; T.dist += v;
-          if (working && T.dist - T.lastRut > 7) { T.lastRut = T.dist; rut(T.x - Math.cos(T.a) * 26, T.y - Math.sin(T.a) * 26, T.a); }
+      const stay = !D.on || D.grounded || nightTime(lastState);
+      if (stay && !D.path.some((p) => p.land)) D.path = [{ ...DRONE_PAD, land: true }];
+      if (gameRunning) {
+        const target = D.path[0];
+        const landed = Math.hypot(D.x - DRONE_PAD.x, D.y - DRONE_PAD.y) < 1 && (!target || target.land);
+        D.alt += ((landed ? 0 : 1) - D.alt) * Math.min(1, dt * 2);
+        if (D.wait > 0) D.wait -= dt;
+        else if (!target) { if (!stay) plan(lastState); }
+        else if (D.alt > .6 || landed || target.land) {
+          const dx = target.x - D.x, dy = target.y - D.y, d = Math.hypot(dx, dy);
+          if (d < 1) { D.path.shift(); if (target.land) { D.wait = rnd(3, 6); D.path = []; } }
+          else {
+            const v = Math.min(d, (target.spray ? 55 : 95) * dt);
+            D.x += (dx / d) * v; D.y += (dy / d) * v;
+            let da = Math.atan2(dy, dx) - D.a; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+            D.a += da * Math.min(1, dt * 4);
+          }
+          D.spray = !!target.spray && d > 1;
         }
-        T.plow = working;
-      } else if (T.mode === "sleep" && lastState) {
-        const h = lastState.derive.heure_dec;
-        if (!(h >= 21 || h < 6)) { T.mode = "idle"; T.wait = Math.random() * 3; }
+        if (D.spray && (D.mist -= dt) <= 0) {
+          D.mist = .07;
+          const m = el("circle", { cx: (D.x + rnd(-8, 8)).toFixed(1), cy: (D.y + 14 + rnd(-6, 6)).toFixed(1), r: 3, class: "mist" }, layers.ruts);
+          setTimeout(() => m.remove(), 1300);
+        }
       }
-      // fumée : plus dense quand il roule ou laboure
-      T.puff -= dt;
-      if (T.mode !== "sleep" && gameRunning && T.puff <= 0) {
-        T.puff = T.plow ? .18 : (T.path.length ? .3 : .7);
-        puff(T.x + Math.cos(T.a) * 6 - Math.sin(T.a) * -7.5, T.y + Math.sin(T.a) * 6 + Math.cos(T.a) * -7.5);
-      }
-      treads.forEach((t) => t.setAttribute("stroke-dashoffset", (-T.dist * .6).toFixed(1)));
-      plowEl.setAttribute("opacity", T.plow ? 1 : 0);
-      g.setAttribute("transform", `translate(${T.x.toFixed(1)} ${T.y.toFixed(1)}) rotate(${(T.a * 57.3).toFixed(1)})`);
+      const off = 4 + D.alt * 18, sc = .8 + D.alt * .25;
+      shadow.setAttribute("transform", `translate(${(D.x + off * .5).toFixed(1)} ${(D.y + off).toFixed(1)}) rotate(${(D.a * 57.3).toFixed(0)}) scale(${(.85 - D.alt * .15).toFixed(2)})`);
+      shadow.setAttribute("opacity", (.22 - D.alt * .08).toFixed(2));
+      g.setAttribute("transform", `translate(${D.x.toFixed(1)} ${(D.y - D.alt * 6).toFixed(1)}) rotate(${(D.a * 57.3 + 90).toFixed(0)}) scale(${sc.toFixed(2)})`);
+      g.classList.toggle("flying", D.alt > .05);
+      body.querySelector(".d-led").setAttribute("fill", Math.sin(performance.now() / 150) > .3 ? "#E2412F" : "#7CFC7C");
     }
-
     function update(state) {
       lastState = state;
-      upgraded = state.ameliorations.includes("tracteur");
-      body.setAttribute("fill", upgraded ? "#3A8A3F" : "#C8392E");
-      hood.setAttribute("fill", upgraded ? "#2E7234" : "#A72F26");
-      lights.setAttribute("opacity", night > .45 ? 1 : 0);
+      D.on = state.technologies.includes("drone");
+      D.grounded = !state.derive.drone_actif;
+      if (D.on && !g) build();
+      if (!D.on && g) { g.remove(); shadow.remove(); pad.remove(); g = null; }
     }
-    function reset() {
-      // la carte a changé de forme : on repart proprement d'un point du réseau de chemins
-      if (!g) return;
-      T.path = [];
-      if (T.mode !== "sleep") { const p = nearestRoad({ x: T.x, y: T.y }); T.x = p.x; T.y = p.y; T.mode = "idle"; T.wait = .5; }
-    }
-    return { build, step, update, reset, state: T };
+    return { step, update, state: D };
   })();
+
+  const vehicles = [tractor, weeder, harvester];
 
   // ------------------------------------------------------------------ étiquettes / zones cliquables
   function labelsSVG() {
@@ -659,7 +807,8 @@ const FarmMap = (() => {
     lastT = t;
     if (anim) anim(t);
     stepHerd(dt);
-    tractor.step(dt);
+    vehicles.forEach((v) => v.step(dt));
+    drone.step(dt);
     requestAnimationFrame(loop);
   }
 
@@ -679,8 +828,8 @@ const FarmMap = (() => {
     layers.tank = el("g", {}, svg);
     layers.animals = el("g", {}, svg);
     layers.tractor = el("g", { "pointer-events": "none" }, svg);
-    tractor.build(layers.tractor);
     layers.puffs = el("g", { "pointer-events": "none" }, svg);
+    layers.drone = el("g", { "pointer-events": "none" }, svg);
     layers.weather = el("g", { "pointer-events": "none" }, svg);
     layers.weather.innerHTML = `<rect id="map-heat" width="${W}" height="${H}" fill="#FFB347" opacity="0"/>
       <rect id="map-night" width="${W}" height="${H}" fill="#0E1A33" opacity="0"/>
@@ -707,7 +856,7 @@ const FarmMap = (() => {
     rainy = !!state.derive.pluie;
     for (const k of FIELDS) {
       const f = state.champs[k];
-      const sig = `${f.etat}|${f.culture}|${f.serre}|${Math.round(f.croissance / 4)}|${Math.round(f.humidite / 8)}|${f.humidite < 18}`;
+      const sig = `${f.serre}|${Math.round(f.humidite / 8)}|${f.humidite < 18}|${f.humidite > 75}|` + f.planches.map((b) => `${b.etat}${b.culture}${Math.round(b.croissance / 4)}`).join(",");
       if (cache[k] !== sig) { cache[k] = sig; layers[k].innerHTML = fieldSVG(k, f); }
     }
     const wsig = `${state.eoliennes}|${state.derive.vent}`;
@@ -730,8 +879,10 @@ const FarmMap = (() => {
     svg.querySelector("#map-night").setAttribute("opacity", (night * .42).toFixed(2));
     svg.querySelector("#map-rain").setAttribute("opacity", w === "pluie" || w === "orage" ? .6 : 0);
     svg.querySelector("#map-heat").setAttribute("opacity", w === "canicule" && night < .5 ? .08 : 0);
-    tractor.update(state);
+    upgraded = state.ameliorations.includes("tracteur");
+    vehicles.forEach((v) => v.update(state));
+    drone.update(state);
   }
 
-  return { init, update, focus, ZONES, FIELDS, tractor: tractor.state };
+  return { init, update, focus, ZONES, FIELDS, tractor: tractor.state, drone: drone.state, weeder: weeder.state };
 })();
