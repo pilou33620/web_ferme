@@ -3,6 +3,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const nf0 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+const nf1 = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
 const nf2 = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const eur = (v) => `${nf0.format(v)} €`;
 const pct = (v) => `${Math.round(v)} %`;
@@ -18,14 +19,55 @@ let busy = false;
 const WEATHER_ICON = { soleil: "sun", nuageux: "cloud", pluie: "rain", orage: "storm", canicule: "heat" };
 const WEATHER_CLS = { soleil: "", nuageux: "cloud", pluie: "rain", orage: "rain", canicule: "" };
 const FIELD_STATE = {
-  vide: ["En friche", "grey"], seme: ["Semé", "info"], pousse: ["En pousse", ""],
+  vide: ["Libre", "grey"], seme: ["Semé", "info"], pousse: ["En pousse", ""],
   mur: ["Prête à récolter", "warn"], fletri: ["Flétri", "bad"],
 };
-const PRODUCT_ICON = { tomates: "🍅", legumes: "🥕", mais: "🌽", lait: "🥛", oeufs: "🥚", laine: "🧶", fumier: "💩", foin: "🌾" };
+const PRODUCT_ICON = { foin: "🌾", foin_bio: "🌿" };
+const emoji = (s, k) => (s.ref.cultures[k] ? s.ref.cultures[k].emoji : s.ref.emoji[k] || PRODUCT_ICON[k]);
+
+// qualité (0-100) en étoiles, et part bio d'un produit
+const stars = (q) => "★★★★★".slice(0, Math.max(1, Math.round(q / 20))).padEnd(5, "☆");
+const qCls = (q) => (q >= 70 ? "" : q >= 50 ? "info" : q >= 30 ? "warn" : "bad");
+function qualityTag(q, label) {
+  return `<span class="pill-tag q ${qCls(q)}" title="Qualité ${Math.round(q)}/100">${stars(q)}${label ? ` ${label}` : ""}</span>`;
+}
+function bioTag(b) {
+  if (b >= 0.95) return `<span class="pill-tag bio" title="Produit sans engrais chimique, animaux nourris bio">🌿 Bio</span>`;
+  if (b > 0.05) return `<span class="pill-tag bio part" title="Une partie du stock seulement est bio">🌿 ${Math.round(b * 100)} % bio</span>`;
+  return "";
+}
+const unitOf = (s, k) => s.ref.produits[k].unite;
 
 // ---------------------------------------------------------------- helpers
+// Met à jour le contenu sur place (seuls les nœuds qui changent sont touchés) : pas de clignotement,
+// pas d'animation rejouée et pas de clic perdu quand l'état est rafraîchi.
 function setHTML(el, html) {
-  if (el && el.__html !== html) { el.innerHTML = html; el.__html = html; hydrateIcons(el); }
+  if (!el || el.__html === html) return;
+  el.__html = html;
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  morph(el, tpl.content);
+  hydrateIcons(el);
+}
+function morph(from, to) {
+  const a = [...from.childNodes], b = [...to.childNodes];
+  b.forEach((n, i) => {
+    const o = a[i];
+    if (!o) from.appendChild(n);
+    else if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName) from.replaceChild(n, o);
+    else if (o.nodeType !== 1) { if (o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue; }
+    else {
+      for (const { name } of [...o.attributes]) if (!n.hasAttribute(name)) o.removeAttribute(name);
+      for (const { name, value } of [...n.attributes]) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
+      morph(o, n);
+    }
+  });
+  for (let i = a.length - 1; i >= b.length; i--) a[i].remove();
+}
+function enterAnim(panel) {
+  panel.classList.remove("enter"); void panel.offsetWidth; panel.classList.add("enter");
+  clearTimeout(panel.__enter);
+  panel.__enter = setTimeout(() => panel.classList.remove("enter"), 400);
 }
 function ring(value, color = "#2F7A4B", size = 92, stroke = 9) {
   const r = (size - stroke) / 2, c = 2 * Math.PI * r;
@@ -64,7 +106,8 @@ async function act(action) {
     const r = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) });
     const res = await r.json();
     if (res.etat) render(res.etat);
-    if (action.type !== "vitesse") toast(res.message, res.ok ? "ok" : "err");
+    if (res.ok && action.type === "nouvelle_partie") resetUI();
+    if (action.type !== "vitesse" && action.type !== "menu") toast(res.message, res.ok ? "ok" : "err");
   } catch (e) {
     toast("Le serveur ne répond pas.", "err");
   } finally { busy = false; }
@@ -78,6 +121,8 @@ document.addEventListener("click", (ev) => {
     if (a.type === "goto") return go(a.view);
     if (a.type === "zone") return selectZone(a.zone);
     if (a.type === "cat") { cat = a.cat; return render(S); }
+    if (a.type === "stall") return selectStall(a.stall);
+    if (a.type === "confirmer") { confirmNew = a.oui; return render(S); }
     return act(a);
   }
 });
@@ -98,8 +143,7 @@ function selectZone(id) {
   if (view !== "ferme") go("ferme");
   FarmMap.focus(id);
   $("#map-back").classList.toggle("show", !!id);
-  const zp = $("#zone-panel");
-  zp.classList.remove("enter"); void zp.offsetWidth; zp.classList.add("enter");
+  enterAnim($("#zone-panel"));
   if (S) render(S);
 }
 $("#map-back").addEventListener("click", (e) => { e.stopPropagation(); selectZone(null); });
@@ -111,7 +155,9 @@ function render(s) {
   const d = s.derive;
   renderSidebar(s, d);
   FarmMap.update(s);
-  ART.updateHero($("#hero-art"), d.heure_dec, s.meteo.type);
+  MarketMap.update(s, myGoods(s));
+  notifySales(s);
+  ART.updateHero($("#hero-art"), d.heure_dec, s.meteo.type, s.eoliennes);
   $(".hero").classList.toggle("night", ART.nightAmount(d.heure_dec) > .5);
   if (view === "accueil") renderHome(s, d);
   if (view === "ferme") renderFarm(s, d);
@@ -119,10 +165,79 @@ function render(s) {
   if (view === "marche") renderMarket(s, d);
   notifyJournal(s);
   renderModal(s);
+  renderTitle(s, d);
+}
+
+// ---------------------------------------------------------------- menu principal
+let confirmNew = false;
+function openMenu() { confirmNew = false; act({ type: "menu", ouvert: true }); }
+$("#open-menu").addEventListener("click", openMenu);
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape" || !S) return;
+  if (!S.menu) openMenu();
+  else if (S.statut === "en_cours" && !confirmNew) act({ type: "menu", ouvert: false });
+  else { confirmNew = false; render(S); }
+});
+
+// une nouvelle partie repart de l'accueil, sans rien garder de l'ancienne à l'écran
+function resetUI() {
+  zone = null; stall = "mon_etal"; cat = "vaches"; confirmNew = false;
+  lastJournalKey = null; lastSaleKey = null;
+  FarmMap.focus(null);
+  $("#map-back").classList.remove("show");
+  MarketMap.select("mon_etal");
+  go("accueil");
+}
+
+function renderTitle(s, d) {
+  const t = $("#title");
+  document.body.classList.toggle("in-menu", !!s.menu);
+  if (!s.menu) { t.hidden = true; return; }
+  t.hidden = false;
+  ART.updateHero($("#title-art"), d.heure_dec, s.meteo.type, s.eoliennes, "t-");
+  const over = s.statut !== "en_cours";
+  const fresh = !over && s.minute <= 305;           // partie toute neuve, jamais lancée
+  let save = "";
+  if (!fresh) {
+    const tag = over ? `<span class="pill-tag ${s.statut === "gagne" ? "" : "bad"}">${s.statut === "gagne" ? "🏆 Victoire" : "Faillite"}</span>`
+      : `<span class="pill-tag grey">${icon("pause")}En pause</span>`;
+    save = `<div class="save"><div class="save-head"><b>${over ? "Partie terminée" : "Partie en cours"}</b>${tag}</div>
+      <div class="save-grid">
+        <div><b>${d.jour_semaine} · J${d.jour}</b><span>${d.heure}</span></div>
+        <div><b>${eur(s.argent)}</b><span>Trésorerie</span></div>
+        <div><b>${s.objectifs.length}/${s.ref.objectifs.length}</b><span>Objectifs</span></div>
+        <div><b>${Math.round(s.reputation)}</b><span>Réputation</span></div>
+      </div>
+      ${meter("Objectif", (s.argent / d.objectif_argent) * 100, "", `${eur(s.argent)} / ${nf0.format(d.objectif_argent)} €`)}</div>`;
+  }
+  let buttons;
+  if (confirmNew) {
+    buttons = `<div class="confirm"><b>Recommencer de zéro ?</b>
+        <span class="muted small">Votre ferme actuelle (jour ${d.jour}, ${eur(s.argent)}) sera effacée.</span>
+        <div class="title-btns row"><button class="btn red" ${A({ type: "nouvelle_partie" })}>${icon("restart")}Oui, recommencer</button>
+        <button class="btn ghost" ${A({ type: "confirmer", oui: false })}>Annuler</button></div></div>`;
+  } else if (over) {
+    buttons = `<div class="title-btns"><button class="btn big" ${A({ type: "nouvelle_partie" })}>${icon("restart")}Nouvelle partie</button></div>`;
+  } else if (fresh) {
+    buttons = `<div class="title-btns"><button class="btn big" ${A({ type: "menu", ouvert: false })}>${icon("play")}Commencer la partie</button></div>`;
+  } else {
+    buttons = `<div class="title-btns"><button class="btn big" ${A({ type: "menu", ouvert: false })}>${icon("play")}Reprendre la partie</button>
+      <button class="btn ghost big" ${A({ type: "confirmer", oui: true })}>${icon("restart")}Nouvelle partie</button></div>`;
+  }
+  const tips = fresh ? `<ul class="title-tips"><li>🌱 Choisissez quoi semer sur vos trois parcelles</li><li>🐄 Nourrissez les bêtes à 6 h, 12 h et 18 h</li>
+      <li>🧺 Vendez au marché le mardi, le jeudi et le samedi</li><li>🎯 Atteignez ${nf0.format(d.objectif_argent)} € sans faire faillite</li></ul>` : "";
+  const maj = s.maj ? `<div class="maj">${icon("sparkle")}<div><b>Mise à jour installée</b><span>${s.maj}</span></div></div>` : "";
+  setHTML($("#title-card"), `<div class="title-logo">${icon("leaf")}</div>
+    <h1>La Ferme du Val Vert</h1><p class="title-sub">Cultivez, élevez, vendez au marché.</p>
+    ${maj}${save}${buttons}${tips}
+    <div class="title-foot muted small">${over || fresh ? "" : "Échap : revenir au jeu · "}La partie est sauvegardée automatiquement.${s.version ? `<br>Version ${s.version}` : ""}</div>`);
 }
 
 function renderSidebar(s, d) {
-  $("#clk-day").textContent = `Jour ${d.jour}`;
+  $("#clk-day").textContent = `${d.jour_semaine} · Jour ${d.jour}`;
+  const mb = $("#badge-marche");
+  mb.textContent = d.marche_ouvert ? "Ouvert" : "";
+  mb.classList.toggle("ok", d.marche_ouvert);
   $("#clk-time").textContent = d.heure;
   $("#clk-bar").style.left = `${(d.heure_dec / 24) * 100}%`;
   $$("#speed button").forEach((b) => b.classList.toggle("on", +b.dataset.speed === s.vitesse));
@@ -154,7 +269,7 @@ function renderHome(s, d) {
   const stats = [
     ["sprout", "g", d.n_cultures, "Cultures actives"],
     ["cow", "r", d.n_animaux, "Animaux"],
-    ["drop", "b", `${d.humidite_moy}%`, "Humidité du sol"],
+    ["store", "b", `${Math.round(s.reputation)}/100`, `Réputation · ${d.prochain_marche}`],
     ["wheat", "a", `${nf0.format(s.stats.recolte_kg)} kg`, "Récolté au total"],
   ];
   setHTML($("#stats-grid"), stats.map(([ic, c, v, l]) => `<div class="stat"><div class="stat-ico ${c}">${icon(ic)}</div><div class="stat-val">${v}</div><div class="stat-lbl">${l}</div></div>`).join(""));
@@ -167,11 +282,13 @@ function renderHome(s, d) {
 }
 
 // ---------------------------------------------------------------- ferme
-const PILLS = [[null, "map", "Vue d'ensemble"], ["maison", "house", "Maison"], ["tomates", "tomato", "Champ de tomates"],
-  ["legumes", "carrot", "Potager"], ["mais", "corn", "Champ de maïs"], ["enclos", "fence", "Enclos"], ["reservoir", "tank", "Réservoir"]];
+const fieldIcon = (f) => (f.serre ? "greenhouse" : "sprout");
 
 function renderFarm(s, d) {
-  setHTML($("#zone-pills"), PILLS.map(([id, ic, l]) => `<button class="pill ${zone === id ? "active" : ""}" ${A({ type: "zone", zone: id })}>${icon(ic)}${l}</button>`).join(""));
+  const pills = [[null, "map", "Vue d'ensemble"], ["maison", "house", "Maison"],
+    ...FarmMap.FIELDS.map((k) => [k, fieldIcon(s.champs[k]), d.noms_champs[k]]),
+    ["enclos", "fence", "Enclos"], ["reservoir", "tank", "Réservoir"]];
+  setHTML($("#zone-pills"), pills.map(([id, ic, l]) => `<button class="pill ${zone === id ? "active" : ""}" ${A({ type: "zone", zone: id })}>${icon(ic)}${l}</button>`).join(""));
   $("#map-hint").style.display = zone ? "none" : "flex";
   $("#map-hint-sub").textContent = `${Object.keys(FarmMap.ZONES).length} zones · ${d.n_cultures} cultures · ${d.n_animaux} animaux`;
   let html;
@@ -188,9 +305,10 @@ function meter(label, value, cls = "", right) {
 }
 
 function overviewPanel(s, d) {
-  const rows = ["tomates", "legumes", "mais"].map((k) => {
+  const rows = FarmMap.FIELDS.map((k) => {
     const f = s.champs[k], [st, c] = FIELD_STATE[f.etat];
-    return `<li style="cursor:pointer" ${A({ type: "zone", zone: k })}><b>${s.ref.cultures[k].nom}</b><span class="pill-tag ${c}">${st}</span></li>`;
+    const crop = f.culture ? ` · ${emoji(s, f.culture)} ${s.ref.cultures[f.culture].nom}` : "";
+    return `<li style="cursor:pointer" ${A({ type: "zone", zone: k })}><b>${d.noms_champs[k]}<span class="muted">${crop}</span></b><span class="pill-tag ${c}">${st}</span></li>`;
   }).join("");
   return `<div class="zone-card"><div class="zone-top"><div class="zone-ico">${icon("map")}</div><div><div class="zone-name">Vue d'ensemble</div><div class="muted small">Ferme du Val Vert · 12,5 ha</div></div></div>
     <div class="kv"><div><b>${d.n_cultures}</b><span>Cultures</span></div><div><b>${d.n_animaux}</b><span>Animaux</span></div><div><b>${pct(s.reservoir.niveau / s.reservoir.capacite * 100)}</b><span>Eau</span></div></div>
@@ -199,39 +317,128 @@ function overviewPanel(s, d) {
 }
 
 function fieldPanel(s, d, k) {
-  const f = s.champs[k], ref = s.ref.cultures[k], [st, c] = FIELD_STATE[f.etat];
-  const tracteur = s.ameliorations.includes("tracteur") ? 1.2 : 1;
-  const est = Math.round(ref.rendement * (0.3 + 0.7 * f.sante / 100) * tracteur);
-  const daysLeft = f.etat === "pousse" || f.etat === "seme" ? ((100 - f.croissance) / 100) * ref.jours : 0;
+  const f = s.champs[k], [st, c] = FIELD_STATE[f.etat];
+  const ref = f.culture ? s.ref.cultures[f.culture] : null;
+  const free = f.etat === "vide" || f.etat === "fletri";
+  const speed = f.serre ? s.ref.serre_boost : 1;
+  const est = d.recolte_est[k];
+  const daysLeft = ref && (f.etat === "pousse" || f.etat === "seme") ? ((100 - f.croissance) / 100) * ref.jours / speed : 0;
   const engrais = f.engrais_jusqua > s.minute;
-  const icons = { tomates: "tomato", legumes: "carrot", mais: "corn" };
+  const growing = f.etat === "seme" || f.etat === "pousse";
+  const q = d.qualite_champs[k];
   const actions = [];
   if (f.etat === "mur") actions.push(`<button class="btn green" ${A({ type: "recolter", champ: k })}>${icon("wheat")}Récolter ~${est} kg</button>`);
-  if (f.etat === "vide" || f.etat === "fletri") actions.push(`<button class="btn" ${A({ type: "semer", champ: k })}>${icon("sprout")}Semer (${ref.graines} €)</button>`);
   if (f.etat !== "vide") actions.push(`<button class="btn ${f.etat === "mur" ? "ghost" : ""}" ${A({ type: "arroser", champ: k })}>${icon("drop")}Arroser · 600 L</button>`);
-  if (f.etat === "seme" || f.etat === "pousse") actions.push(`<button class="btn ghost" ${A({ type: "fertiliser", champ: k })} ${s.stock.fumier < 50 ? "disabled" : ""}>${icon("poop")}Fumier · 50 kg</button>`);
-  return `<div class="zone-card"><div class="zone-top"><div class="zone-ico">${icon(icons[k])}</div><div><div class="zone-name">${ref.nom}</div><div class="muted small">Culture : ${ref.culture}</div></div><span class="pill-tag ${c}">${st}</span></div>
-    <div class="kv"><div><b>${pct(f.croissance)}</b><span>Croissance</span></div><div><b>${pct(f.sante)}</b><span>Santé</span></div><div><b>${f.etat === "vide" ? "—" : est + " kg"}</b><span>Récolte est.</span></div></div>
-    ${meter("Croissance", f.croissance, "", daysLeft ? `encore ~${nf0.format(Math.ceil(daysLeft * 24))} h` : pct(f.croissance))}
-    ${meter("Humidité du sol", f.humidite, f.humidite < 20 ? "red" : "blue")}
-    ${meter("Santé des plants", f.sante, barCls(f.sante))}
-    <div class="actions">${actions.join("")}</div></div>
-    <div class="zone-card"><ul class="mini-list">
+  let rain = "";
+  if (d.pluie && f.etat !== "vide") {
+    rain = f.serre ? `<div class="note warn">${icon("rain")}Il pleut, mais pas sous la serre : arrosez-la vous-même.</div>`
+      : `<div class="note info">${icon("rain")}Il pleut : la pluie arrose cette parcelle toute seule.</div>`;
+  }
+  const sub = ref && !(f.etat === "fletri") ? `Culture : ${ref.emoji} ${ref.nom}` : f.etat === "fletri" ? `${ref.nom} flétries — ressemez` : "Libre — choisissez quoi semer";
+  let html = `<div class="zone-card"><div class="zone-top"><div class="zone-ico ${f.serre ? "glass" : ""}">${icon(fieldIcon(f))}</div><div><div class="zone-name">${d.noms_champs[k]}</div><div class="muted small">${sub}</div></div><span class="pill-tag ${c}">${st}</span></div>`;
+  if (ref && !free) {
+    html += `<div class="kv"><div><b>${pct(f.croissance)}</b><span>Croissance</span></div><div><b>${pct(f.sante)}</b><span>Santé</span></div><div><b>${est} kg</b><span>Récolte est.</span></div></div>
+      ${meter("Croissance", f.croissance, "", daysLeft ? `encore ~${nf0.format(Math.ceil(daysLeft * 24))} h` : pct(f.croissance))}`;
+  }
+  html += meter("Humidité du sol", f.humidite, f.humidite < 20 ? "red" : "blue");
+  if (ref && !free) {
+    html += meter("Santé des plants", f.sante, barCls(f.sante));
+    html += meter(`Qualité de la récolte ${f.chimique ? "" : bioTag(1)}`, q, barCls(q), `${stars(q)} ${q}/100`);
+  }
+  html += rain;
+  if (actions.length) html += `<div class="actions">${actions.join("")}</div>`;
+  html += `</div>`;
+  if (growing) {
+    html += `<div class="zone-card"><div class="card-head"><h3>${icon("sprout")} Engrais</h3>${engrais ? `<span class="pill-tag">Actif · ×${nf1.format(f.boost)}</span>` : ""}</div>
+      <div class="ferti">
+        <button class="ferti-opt bio" ${A({ type: "fertiliser", champ: k, engrais: "fumier" })} ${s.stock.fumier < 50 ? "disabled" : ""}>
+          <b>${icon("poop")}Fumier · bio</b><small>50 kg (stock ${nf0.format(s.stock.fumier)} kg) · pousse ×1,5 · qualité en hausse</small></button>
+        <button class="ferti-opt chem" ${A({ type: "fertiliser", champ: k, engrais: "chimique" })} ${s.argent < s.ref.prix_chimique ? "disabled" : ""}>
+          <b>${icon("sparkle")}Engrais chimique · ${s.ref.prix_chimique} €</b><small>pousse ×1,8 · +20 % de récolte · qualité en baisse · <u>plus bio</u> (ni le miel)</small></button>
+      </div></div>`;
+  }
+  if (free) html += cropPicker(s, k, f, speed);
+  html += greenhouseCard(s, d, k, f, free);
+  html += `<div class="zone-card"><ul class="mini-list">
       <li>Arrosage intelligent <span>${s.ameliorations.includes("arrosage") ? "Actif" : "Non installé"}</span></li>
-      <li>Engrais <span>${engrais ? "Actif (×1,5)" : "—"}</span></li>
+      <li>Culture <span>${!ref || free ? "—" : f.chimique ? "Conventionnelle" : "🌿 Bio"}</span></li>
+      ${d.pollinisation ? `<li>Pollinisation des abeilles <span>+${d.pollinisation} % de récolte</span></li>` : ""}
       <li>Fumier en stock <span>${nf0.format(s.stock.fumier)} kg</span></li>
       <li>Eau disponible <span>${nf0.format(s.reservoir.niveau)} L</span></li>
-      <li>Prix du marché <span>${nf2.format(s.prix[ref.produit])} €/kg</span></li></ul></div>`;
+      ${ref ? `<li>Cours du jour <span>${nf2.format(s.prix[f.culture])} €/kg</span></li>` : ""}</ul></div>`;
+  return html;
+}
+
+function cropPicker(s, k, f, speed) {
+  const size = s.ref.parcelles[k].taille * (s.ameliorations.includes("tracteur") ? s.ref.tracteur : 1);
+  const crops = Object.entries(s.ref.cultures).sort(([, a], [, b]) => (a.serre ? 1 : 0) - (b.serre ? 1 : 0));
+  const btns = crops.map(([c, r]) => {
+    const kg = Math.round(r.rendement * size);
+    const perDay = (kg * s.prix[c] - r.graines) / (r.jours / speed);
+    const locked = r.serre && !f.serre;
+    const poor = s.argent < r.graines;
+    return `<button class="crop ${r.serre ? "serre-only" : ""}" ${A({ type: "semer", champ: k, culture: c })} ${locked || poor ? "disabled" : ""}
+        title="${locked ? "Uniquement sous serre" : `${r.nom} : ${r.jours / speed} j, ~${kg} kg`}">
+      <span class="emo">${r.emoji}</span><b>${r.nom}</b>
+      <small>${nf1.format(r.jours / speed)} j · graines ${r.graines} €</small>
+      <span class="gain">${locked ? `${icon("lock")}Sous serre` : `≈ ${eur(perDay)} / jour`}</span></button>`;
+  }).join("");
+  return `<div class="zone-card"><div class="card-head"><h3>Que voulez-vous semer ?</h3></div>
+    <div class="crop-grid">${btns}</div>
+    <div class="muted small" style="margin-top:10px">Gain estimé au prix du jour, plants en pleine santé.</div></div>`;
+}
+
+function greenhouseCard(s, d, k, f, free) {
+  const b = s.ref.batiments.serre;
+  if (f.serre) {
+    return `<div class="zone-card glass-card"><div class="card-head"><h3>${icon("greenhouse")} Sous serre</h3><span class="pill-tag info">Entretien ${b.entretien} €/j</span></div>
+      <div class="muted small">Pousse +${Math.round((s.ref.serre_boost - 1) * 100)} %, sol qui sèche moins vite, à l'abri des orages et de la canicule. La pluie n'arrose plus : pensez au réservoir.</div></div>`;
+  }
+  if (!d.serre_debloquee) {
+    return `<div class="zone-card"><div class="card-head"><h3>${icon("lock")} Serre</h3><span class="pill-tag grey">Verrouillée</span></div>
+      <div class="muted small">Vendez pour ${nf0.format(b.ventes_requises)} € de produits pour pouvoir remplacer cette parcelle par une serre.</div>
+      ${meter("Ventes cumulées", (s.stats.ventes / b.ventes_requises) * 100, "", `${eur(s.stats.ventes)} / ${nf0.format(b.ventes_requises)} €`)}</div>`;
+  }
+  return `<div class="zone-card"><div class="card-head"><h3>${icon("greenhouse")} Construire une serre</h3></div>
+    <div class="muted small">${b.desc} Entretien ${b.entretien} €/jour.</div>
+    <div class="actions"><button class="btn" ${A({ type: "construire", batiment: "serre", champ: k })} ${!free || s.argent < b.prix ? "disabled" : ""}>${icon("greenhouse")}Serre · ${eur(b.prix)}</button></div>
+    ${free ? "" : `<div class="muted small" style="margin-top:8px">Récoltez d'abord : la parcelle doit être libre.</div>`}</div>`;
 }
 
 function housePanel(s, d) {
-  const charges = 35 + 1.5 * d.n_animaux + 12 * s.ameliorations.length;
+  const charges = d.charges;
   const ups = s.ameliorations.map((u) => `<li>${s.ref.ameliorations[u].nom}<span>✓</span></li>`).join("") || `<li>Aucune pour l'instant<span>—</span></li>`;
   return `<div class="zone-card"><div class="zone-top"><div class="zone-ico">${icon("house")}</div><div><div class="zone-name">Maison</div><div class="muted small">Le bureau de la ferme</div></div></div>
     <div class="kv"><div><b>${eur(s.argent)}</b><span>Trésorerie</span></div><div><b>${eur(charges)}</b><span>Charges / jour</span></div><div><b>J${d.jour}</b><span>Saison</span></div></div>
     ${meter("Objectif", (s.argent / d.objectif_argent) * 100, "", `${eur(s.argent)} / ${nf0.format(d.objectif_argent)} €`)}
     <div class="actions"><button class="btn" ${A({ type: "goto", view: "marche" })}>${icon("store")}Aller au marché</button></div></div>
+    ${beeCard(s, d)}
+    ${windCard(s, d)}
     <div class="zone-card"><div class="card-head"><h3>Améliorations</h3></div><ul class="mini-list">${ups}</ul></div>`;
+}
+
+function beeCard(s, d) {
+  const b = s.ref.batiments.ruche, n = s.ruches;
+  const buy = n < b.max ? `<div class="actions"><button class="btn" ${A({ type: "construire", batiment: "ruche" })} ${s.argent < b.prix ? "disabled" : ""}>${icon("bee")}${n ? "Une ruche de plus" : "Installer une ruche"} · ${eur(b.prix)}</button></div>` : "";
+  if (!n) {
+    return `<div class="zone-card"><div class="card-head"><h3>${icon("bee")} Ruches</h3><span class="pill-tag grey">Aucune</span></div>
+      <div class="muted small">${b.desc} Le miel se garde longtemps et se vend bien.</div>${buy}</div>`;
+  }
+  return `<div class="zone-card"><div class="card-head"><h3>${icon("bee")} Ruches</h3><span class="pill-tag">${n} / ${b.max}</span></div>
+    <div class="kv"><div><b>${nf1.format(d.miel_jour)} kg</b><span>Miel / jour</span></div><div><b>${qf(s.stock.miel)} kg</b><span>En stock</span></div><div><b>+${d.pollinisation} %</b><span>Pollinisation</span></div></div>
+    <div class="tags">${qualityTag(d.qualite_miel, "fleurs variées")}${d.miel_bio ? bioTag(1) : `<span class="pill-tag warn">Engrais chimique récent : pas bio</span>`}</div>
+    <div class="muted small" style="margin-top:8px">Plus il y a de cultures différentes en fleurs, meilleur est le miel. Pas de miel sous la pluie.</div>${buy}</div>`;
+}
+
+function windCard(s, d) {
+  const b = s.ref.batiments.eolienne, n = s.eoliennes;
+  const buy = n < b.max ? `<div class="actions"><button class="btn" ${A({ type: "construire", batiment: "eolienne" })} ${s.argent < b.prix ? "disabled" : ""}>${icon("wind")}${n ? "Une deuxième" : "Acheter une éolienne"} · ${eur(b.prix)}</button></div>` : "";
+  if (!n) {
+    return `<div class="zone-card"><div class="card-head"><h3>${icon("wind")} Éoliennes</h3><span class="pill-tag grey">Aucune</span></div>
+      <div class="muted small">${b.desc} Il y a de la place pour ${b.max} à côté de la maison.</div>${buy}</div>`;
+  }
+  return `<div class="zone-card"><div class="card-head"><h3>${icon("wind")} Éoliennes</h3><span class="pill-tag">${n} / ${b.max}</span></div>
+    <div class="kv"><div><b>${eur(d.gain_eoliennes)}</b><span>Aujourd'hui / j</span></div><div><b>${pct(d.vent * 100)}</b><span>Vent</span></div><div><b>${eur(s.stats.energie)}</b><span>Total gagné</span></div></div>${buy}</div>`;
 }
 
 function penPanel(s, d) {
@@ -243,14 +450,18 @@ function penPanel(s, d) {
     ${meter("Satiété", d.nourriture, barCls(d.nourriture))}
     <div class="muted small" style="margin-top:8px">${next ? `Prochain repas : <b>${next.heure}</b> — ${next.menu}${next.statut === "maintenant" ? " (maintenant !)" : ""}` : "Tous les repas du jour sont passés."}</div>
     <div class="actions"><button class="btn green" ${A({ type: "nourrir" })}>${icon("bowl")}Nourrir · ${d.ration} kg</button><button class="btn ghost" ${A({ type: "goto", view: "elevage" })}>Voir l'élevage</button></div></div>
-    <div class="zone-card"><ul class="mini-list">${cats}<li>Foin en stock<span>${nf0.format(s.stock.foin)} kg</span></li></ul></div>`;
+    <div class="zone-card"><ul class="mini-list">${cats}<li>Foin en stock<span>${nf0.format(s.stock.foin)} kg</span></li>
+      <li>Foin bio en stock<span>${nf0.format(s.stock.foin_bio)} kg</span></li><li>Dernier repas<span>${s.repas_bio >= .99 ? "🌿 100 % bio" : `${pct(s.repas_bio * 100)} bio`}</span></li></ul></div>`;
 }
 
 function tankPanel(s, d) {
   const r = s.reservoir, frac = (r.niveau / r.capacite) * 100;
   const smart = s.ameliorations.includes("arrosage");
-  const stock = ["foin", "mais", "tomates", "legumes", "lait", "oeufs", "laine", "fumier"].map((k) =>
-    `<li>${PRODUCT_ICON[k]} ${k === "foin" ? "Foin" : s.ref.produits[k].nom}<span>${qf(s.stock[k])} ${k === "foin" ? "kg" : s.ref.produits[k].unite}</span></li>`).join("");
+  const feed = [["foin", "Foin"], ["foin_bio", "Foin bio"]].map(([k, nom]) => `<li>${emoji(s, k)} ${nom}<span>${qf(s.stock[k])} kg</span></li>`).join("");
+  const stock = feed + Object.keys(s.ref.produits).filter((k) => s.stock[k] >= 1 || ["mais", "lait", "oeufs", "fumier"].includes(k)).map((k) => {
+    const p = d.produits[k];
+    return `<li><div>${emoji(s, k)} ${s.ref.produits[k].nom}<div class="tags">${s.stock[k] >= 1 ? qualityTag(p.qualite) + bioTag(p.bio) : ""}</div></div><span>${qf(s.stock[k])} ${unitOf(s, k)}</span></li>`;
+  }).join("");
   return `<div class="zone-card"><div class="zone-top"><div class="zone-ico" style="background:var(--blue-soft);color:var(--blue)">${icon("tank")}</div><div><div class="zone-name">Réservoir d'eau</div><div class="muted small">Pompe ${s.ameliorations.includes("reservoir") ? "1 440" : "720"} L/jour + pluie</div></div>
     <span class="pill-tag ${frac < 20 ? "bad" : "info"}">${frac < 20 ? "Bas" : "OK"}</span></div>
     <div class="kv"><div><b>${pct(frac)}</b><span>Niveau</span></div><div><b>${nf0.format(r.niveau)} L</b><span>Disponible</span></div><div><b>${nf0.format(r.capacite)} L</b><span>Capacité</span></div></div>
@@ -277,7 +488,8 @@ function renderLivestock(s, d) {
   setHTML($("#feeding"), `<div class="feed-head"><div class="feed-ico">${icon("wheat")}</div><div><h3>Repas du jour</h3><div class="muted small">${auto ? "Distributeur automatique actif" : "Nourrissez le troupeau à chaque repas"}</div></div></div>
     <div class="timeline">${d.repas.map((r) => `<div class="tl ${r.statut}"><div class="tl-dot">${r.statut === "fait" ? icon("check") : r.statut === "manque" ? icon("x") : icon("clock") || ""}</div>
       <div class="tl-time">${r.heure}</div><div class="tl-menu">${r.menu}</div><div class="tl-state">${lbl[r.statut]}</div></div>`).join("")}</div>
-    <div class="feed-foot"><div class="muted small">Ration : <b>${d.ration} kg</b> · Stock : <b>${nf0.format(s.stock.foin)} kg</b> de foin + ${nf0.format(s.stock.mais)} kg de maïs</div>
+    <div class="feed-foot"><div class="muted small">Ration : <b>${d.ration} kg</b> · Stock : <b>${nf0.format(s.stock.foin_bio)} kg</b> de foin bio, ${nf0.format(s.stock.foin)} kg de foin, ${nf0.format(s.stock.mais)} kg de maïs<br>
+      Dernier repas ${s.repas_bio >= .99 ? "🌿 100 % bio" : `${pct(s.repas_bio * 100)} bio`} · le foin bio est servi en premier et rend le lait, les œufs et la laine bio.</div>
     <button class="btn green" ${A({ type: "nourrir" })}>${icon("bowl")}Nourrir</button></div>`);
 
   const prodLbl = { lait: "L de lait / j", oeufs: "œufs / j", laine: "kg de laine / j", fumier: "kg de fumier / j" };
@@ -285,38 +497,226 @@ function renderLivestock(s, d) {
     const ref = s.ref.animaux[k];
     const p = s.stats.hier[ref.produit] ?? s.stats.production_jour[ref.produit] ?? 0;
     return `<button class="cat ${cat === k ? "active" : ""}" ${A({ type: "cat", cat: k })}><div class="cat-art">${ART.side[k]}</div>
-      <div class="cat-n">${g.liste.length}</div><div class="cat-name">${ref.nom}</div><div class="cat-prod">${qf(p)} ${prodLbl[ref.produit]}</div></button>`;
+      <div class="cat-n">${g.liste.length}</div><div class="cat-name">${ref.nom}</div><div class="cat-prod">${qf(p)} ${prodLbl[ref.produit]}</div>
+      ${g.liste.length ? `<div class="cat-q">${qualityTag(d.qualite_animaux[k])}</div>` : ""}</button>`;
   }).join(""));
 
-  const g = s.animaux[cat], ref = s.ref.animaux[cat];
-  const rows = g.liste.map((a) => `<div class="arow"><div class="arow-ico">${ART.side[cat]}</div>
+  const g = s.animaux[cat], ref = s.ref.animaux[cat], prices = d.prix_animaux[cat];
+  const rows = g.liste.map((a, i) => `<div class="arow"><div class="arow-ico">${ART.side[cat]}</div>
       <div><div class="arow-name">${a.nom}</div><div class="arow-sub">${ref.unite[0].toUpperCase() + ref.unite.slice(1)} · n°${a.id.slice(2)}</div></div>
       <div class="bar ${barCls(a.sante)}"><i style="width:${a.sante}%"></i></div>
-      <span class="pill-tag ${a.sante >= 70 ? "" : a.sante >= 50 ? "warn" : "bad"}">${a.sante >= 70 ? "En forme" : a.sante >= 50 ? "Fatigué" : "Malade"}</span></div>`).join("");
-  setHTML($("#animal-list"), `<div class="card-head"><h3>Vos ${ref.nom.toLowerCase()}</h3>
-    <button class="btn sm" ${A({ type: "acheter", article: cat, quantite: 1 })}>${icon("plus")}Acheter · ${nf0.format(ref.prix)} €</button></div>
+      <span class="pill-tag ${a.sante >= 70 ? "" : a.sante >= 50 ? "warn" : "bad"}">${a.sante >= 70 ? "En forme" : a.sante >= 50 ? "Fatigué" : "Malade"}</span>
+      <button class="btn ghost sm" title="Vendre au marché aux bestiaux" ${A({ type: "vendre_animal", categorie: cat, id: a.id })}>Vendre · ${eur(prices[i])}</button></div>`).join("");
+  const prodNom = s.ref.produits[ref.produit].nom.toLowerCase();
+  setHTML($("#animal-list"), `<div class="card-head"><div><h3>Vos ${ref.nom.toLowerCase()}</h3>
+      <div class="muted small">Produit : ${emoji(s, ref.produit)} ${prodNom} · qualité selon leur santé et leurs repas. Vendre l'animal ou garder sa production : à vous de voir.</div></div>
+    <div class="head-btns"><button class="btn sm" ${A({ type: "acheter", article: cat, quantite: 1 })}>${icon("plus")}Acheter · ${nf0.format(ref.prix)} €</button></div></div>
     <div class="animal-rows">${rows || `<div class="muted">Aucun animal dans cette catégorie.</div>`}</div>`);
 }
 
 // ---------------------------------------------------------------- marché
-function renderMarket(s, d) {
-  const rows = Object.entries(s.ref.produits).map(([k, p]) => {
-    const price = s.prix[k], prev = s.prix_hier[k], diff = ((price - prev) / prev) * 100;
-    const tr = Math.abs(diff) < 0.5 ? "" : `<span class="trend ${diff > 0 ? "up" : "down"}">${diff > 0 ? "▲" : "▼"} ${Math.abs(diff).toFixed(0)}%</span>`;
-    const qty = k === "oeufs" ? Math.floor(s.stock[k]) : s.stock[k];
-    return `<tr><td><div class="prod-cell"><span class="prod-dot">${PRODUCT_ICON[k]}</span>${p.nom}</div></td>
-      <td>${qf(qty)} ${p.unite}</td><td>${nf2.format(price)} €/${p.unite}${tr}</td><td><b>${eur(qty * price)}</b></td>
-      <td><button class="btn sm ${qty >= 1 ? "" : "ghost"}" ${qty >= 1 ? "" : "disabled"} ${A({ type: "vendre", produit: k })}>Vendre</button></td></tr>`;
-  }).join("");
-  setHTML($("#sell-table"), `<tr><th>Produit</th><th>Stock</th><th>Prix du jour</th><th>Valeur</th><th></th></tr>${rows}`);
+const STALL_TIPS = [
+  "Les clients regardent la qualité : des récoltes cueillies à temps et un sol bien arrosé valent plus cher.",
+  "Le bio se vend 30 % plus cher au marché : fumier plutôt qu'engrais chimique, foin bio pour les bêtes.",
+  "Le lait et les salades s'abîment vite : vendez-les au plus tôt, ou laissez le camion de la fromagerie passer.",
+  "Un étal varié attire plus de monde. Et une bonne réputation fait revenir les clients.",
+  "Trop cher, les clients passent leur chemin… et votre réputation en pâtit un peu.",
+  "Les abeilles pollinisent vos cultures : jusqu'à +15 % de récolte avec trois ruches.",
+  "Il y a moins de monde au marché quand il pleut.",
+];
 
-  const fp = s.ref.prix_foin;
-  let buy = `<div class="buy-row"><span class="prod-dot">🌾</span><div class="grow"><b>Foin</b><span class="muted small">${nf2.format(fp)} €/kg · stock ${nf0.format(s.stock.foin)} kg</span></div>
-    <button class="btn ghost sm" ${A({ type: "acheter", article: "foin", quantite: 200 })}>200 kg · ${eur(200 * fp)}</button>
-    <button class="btn sm" ${A({ type: "acheter", article: "foin", quantite: 1000 })}>1 t · ${eur(1000 * fp)}</button></div>`;
-  buy += Object.entries(s.ref.animaux).map(([k, a]) => `<div class="buy-row"><span class="prod-dot">${ART.side[k]}</span><div class="grow"><b>${a.nom}</b><span class="muted small">${s.animaux[k].liste.length} à la ferme · ${a.ration} kg / repas</span></div>
-    <button class="btn sm" ${A({ type: "acheter", article: k, quantite: 1 })}>+1 · ${eur(a.prix)}</button></div>`).join("");
-  setHTML($("#buy-list"), buy);
+// emojis des produits en vente sur votre étal, du plus précieux au moins précieux (pour la carte)
+function myGoods(s) {
+  return Object.keys(s.ref.produits)
+    .filter((k) => s.derive.produits[k].en_vente)
+    .sort((a, b) => s.stock[b] * s.derive.produits[b].prix_etal - s.stock[a] * s.derive.produits[a].prix_etal)
+    .slice(0, 6).map((k) => emoji(s, k));
+}
+
+function trend(s, k) {
+  const diff = ((s.prix[k] - s.prix_hier[k]) / s.prix_hier[k]) * 100;
+  return Math.abs(diff) < 0.5 ? "" : `<span class="trend ${diff > 0 ? "up" : "down"}">${diff > 0 ? "▲" : "▼"} ${Math.abs(diff).toFixed(0)}%</span>`;
+}
+
+const priceFmt = (v) => (v < 1 ? nf2.format(v) : nf2.format(v));
+
+// vente en gros à un marchand (immédiate, moins chère qu'au marché)
+function sellRow(s, k) {
+  const d = s.derive, p = s.ref.produits[k], info = d.produits[k];
+  const buyer = s.ref.acheteurs[p.grossiste];
+  const qty = k === "oeufs" ? Math.floor(s.stock[k]) : s.stock[k];
+  const away = buyer.marche && !d.marche_ouvert;
+  const ok = qty >= 1 && !away;
+  return `<div class="buy-row"><span class="prod-dot">${emoji(s, k)}</span><div class="grow"><b>${p.nom}</b>
+    <span class="muted small">${qf(qty)} ${p.unite} · en gros ${priceFmt(info.prix_gros)} €/${p.unite}${trend(s, k)}</span>
+    ${qty >= 1 ? `<div class="tags">${qualityTag(info.qualite)}${bioTag(info.bio)}</div>` : ""}</div>
+    <button class="btn sm ${ok ? "" : "ghost"}" ${ok ? "" : "disabled"} ${A({ type: "vendre", produit: k })}>${away ? "Jour de marché" : `Vendre · ${eur(qty * info.prix_gros)}`}</button></div>`;
+}
+
+function shopRow(ic, nom, sub, btn) {
+  return `<div class="buy-row"><span class="prod-dot ic">${icon(ic)}</span><div class="grow"><b>${nom}</b><span class="muted small">${sub}</span></div>${btn}</div>`;
+}
+
+// ce que les clients pensent du prix affiché
+function priceVerdict(chance) {
+  if (chance >= 0.85) return ["Bon marché", "info"];
+  if (chance >= 0.55) return ["Juste prix", ""];
+  if (chance >= 0.3) return ["Un peu cher", "warn"];
+  return ["Trop cher", "bad"];
+}
+
+function stallRow(s, k) {
+  const d = s.derive, p = s.ref.produits[k], info = d.produits[k], e = s.etal[k];
+  const price = info.prix_etal, step = Math.max(0.01, Math.round(price * 5) / 100);
+  const [verdict, vcls] = priceVerdict(info.chance);
+  const custom = e.prix !== null;
+  return `<div class="etal-row ${e.actif ? "" : "off"}">
+    <span class="prod-dot">${emoji(s, k)}</span>
+    <div class="grow"><b>${p.nom} <span class="muted small">· ${qf(s.stock[k])} ${p.unite}</span></b>
+      <div class="tags">${qualityTag(info.qualite, info.label)}${bioTag(info.bio)}</div></div>
+    <button class="switch ${e.actif ? "on" : ""}" title="${e.actif ? "Retirer de l'étal" : "Mettre en vente"}" ${A({ type: "etal", produit: k, actif: !e.actif })}><i></i></button>
+    <div class="etal-price">
+      ${e.actif ? `<div class="price-ctl">
+        <button ${A({ type: "etal", produit: k, prix: Math.max(0.01, +(price - step).toFixed(2)) })} title="Baisser le prix">−</button>
+        <span><b>${priceFmt(price)} €</b>/${p.unite}</span>
+        <button ${A({ type: "etal", produit: k, prix: +(price + step).toFixed(2) })} title="Monter le prix">+</button></div>
+        <div class="price-sub"><span class="pill-tag ${vcls}">${verdict}</span>
+          ${custom ? `<button class="link" ${A({ type: "etal", produit: k, prix: null })}>Prix conseillé (${priceFmt(info.prix_juste)} €)</button>` : `<span class="muted small">Prix conseillé</span>`}</div>`
+      : `<span class="muted small">Pas en vente · gardé à la ferme</span>`}
+    </div>
+  </div>`;
+}
+
+function myStallPanel(s, d, card, head) {
+  const mk = s.marche;
+  const keys = Object.keys(s.ref.produits).filter((k) => s.stock[k] >= (k === "oeufs" ? 1 : 0.2))
+    .sort((a, b) => (s.etal[b].actif - s.etal[a].actif) || s.stock[b] * s.prix[b] - s.stock[a] * s.prix[a]);
+  const status = d.marche_ouvert
+    ? `<span class="pill-tag">${icon("store")} Ouvert · ${nf1.format(d.clients_heure)} clients/h</span>`
+    : `<span class="pill-tag grey">Fermé</span>`;
+  const today = mk.jour === d.jour && mk.etat !== "ferme";
+  const kv = `<div class="kv"><div><b>${d.marche_ouvert || today ? mk.clients : "—"}</b><span>Clients ${today ? "aujourd'hui" : ""}</span></div>
+    <div><b>${today ? eur(mk.recette) : "—"}</b><span>Recette du jour</span></div><div><b>${Math.round(s.reputation)}</b><span>Réputation</span></div></div>`;
+  const when = d.marche_ouvert ? `Les clients achètent tout seuls jusqu'à ${s.ref.marche_heures[1]} h.`
+    : `Prochain marché : <b>${d.prochain_marche}</b> (${d.jours_marche.join(", ").toLowerCase()}, ${s.ref.marche_heures[0]} h – ${s.ref.marche_heures[1]} h).`;
+  const rows = keys.map((k) => stallRow(s, k)).join("") || `<div class="muted small">Rien à vendre : récoltez, ramassez les œufs, installez des ruches…</div>`;
+  const sales = mk.dernieres.length && today
+    ? `<ul class="mini-list sales">${mk.dernieres.map((v) => `<li>${v.heure} · ${emoji(s, v.produit)} ${qf(v.qte)} ${unitOf(s, v.produit)} de ${s.ref.produits[v.produit].nom.toLowerCase()}<span>+${nf2.format(v.montant)} €</span></li>`).join("")}</ul>`
+    : `<div class="muted small">${d.marche_ouvert ? "Les premiers clients arrivent…" : "Les ventes du prochain marché s'afficheront ici."}</div>`;
+  return card(`${head("Votre stand · Ferme du Val Vert", status)}${kv}
+      ${meter("Réputation", s.reputation, barCls(s.reputation), `${Math.round(s.reputation)}/100`)}
+      <div class="muted small" style="margin:6px 0 4px">${when} Ils comparent votre prix à la qualité : bio et belle qualité se vendent plus cher.</div>`)
+    + card(`<div class="card-head"><h3>Sur l'étal</h3><span class="muted small">prix par unité</span></div><div class="etal-list">${rows}</div>
+      <div class="muted small" style="margin-top:10px">Ce qui ne part pas au marché peut se vendre en gros aux marchands (moins cher), tous les jours.</div>`)
+    + card(`<div class="card-head"><h3>Dernières ventes</h3>${today && mk.acheteurs ? `<span class="muted small">${mk.acheteurs} acheteur(s)</span>` : ""}</div>${sales}`);
+}
+
+function stallPanel(s, d, id) {
+  const st = MarketMap.STALLS[id];
+  const card = (body) => `<div class="zone-card">${body}</div>`;
+  const head = (sub, tag = "") => `<div class="zone-top"><div class="zone-ico emo">${st.emoji}</div><div><div class="zone-name">${st.nom}</div><div class="muted small">${sub}</div></div>${tag}</div>`;
+  const quote = (txt) => `<div class="quote"><b>${st.vendeur} :</b> « ${txt} »</div>`;
+  const absent = MarketMap.TEMPORARY.includes(id) && !d.marche_ouvert;
+  const closedTag = absent ? `<span class="pill-tag grey">${d.prochain_marche}</span>` : "";
+
+  if (id === "mon_etal") return myStallPanel(s, d, card, head);
+  if (id === "grainetier") {
+    const perDay = d.ration * 3;
+    const days = perDay ? (s.stock.foin + s.stock.foin_bio + s.stock.mais) / perDay : 0;
+    const hay = (art, nom, prix, sub) => `<div class="buy-row"><span class="prod-dot">${emoji(s, art)}</span><div class="grow"><b>${nom}</b><span class="muted small">${nf2.format(prix)} €/kg · ${sub}</span></div>
+        <button class="btn ghost sm" ${A({ type: "acheter", article: art, quantite: 200 })}>200 kg · ${eur(200 * prix)}</button>
+        <button class="btn sm" ${A({ type: "acheter", article: art, quantite: 1000 })}>1 t · ${eur(1000 * prix)}</button></div>`;
+    return card(`${head(`Tenu par ${st.vendeur} · ouvert tous les jours`)}${quote(days < 2 ? "Vos bêtes vont bientôt manquer, faites le plein !" : "Le foin bio coûte un peu plus, mais votre lait se vendra mieux.")}
+      <div class="kv"><div><b>${nf0.format(s.stock.foin + s.stock.foin_bio)} kg</b><span>Foin</span></div><div><b>${nf0.format(perDay)} kg</b><span>Besoin / jour</span></div><div><b>${nf1.format(days)} j</b><span>Autonomie</span></div></div>
+      ${hay("foin_bio", "Foin bio", s.ref.prix_foin_bio, `stock ${nf0.format(s.stock.foin_bio)} kg · servi en premier`)}
+      ${hay("foin", "Foin", s.ref.prix_foin, `stock ${nf0.format(s.stock.foin)} kg`)}`)
+      + card(`<div class="card-head"><h3>Il vous achète</h3></div>${sellRow(s, "mais")}`);
+  }
+  if (id === "bestiaux") {
+    const rows = Object.entries(s.ref.animaux).map(([k, a]) => {
+      const prices = d.prix_animaux[k], n = prices.length, low = n ? Math.min(...prices) : 0;
+      return `<div class="buy-row"><span class="prod-dot">${ART.side[k]}</span><div class="grow"><b>${a.nom}</b><span class="muted small">${n} à la ferme · ${a.ration} kg / repas</span></div>
+        <button class="btn ghost sm" ${A({ type: "vendre_animal", categorie: k })} ${n ? "" : "disabled"} title="Vend l'animal le moins en forme">Vendre · ${eur(low)}</button>
+        <button class="btn sm" ${A({ type: "acheter", article: k, quantite: 1 })} ${s.argent < a.prix ? "disabled" : ""}>Acheter · ${eur(a.prix)}</button></div>`;
+    }).join("");
+    return card(`${head(`Tenu par ${st.vendeur} · ouvert tous les jours`)}${quote("J'achète et je vends. Une bête en bonne santé, je la paie plus cher !")}${rows}
+      <div class="muted small" style="margin-top:8px">« Vendre » cède l'animal le moins en forme. Pour en choisir un, passez par l'Élevage.</div>
+      <div class="actions"><button class="btn ghost" ${A({ type: "goto", view: "elevage" })}>Voir mon élevage</button></div>`);
+  }
+  if (id === "artisan") {
+    const eo = s.ref.batiments.eolienne, se = s.ref.batiments.serre, ru = s.ref.batiments.ruche;
+    const upIcons = { arrosage: "drop", distributeur: "bowl", reservoir: "tank", cloture: "fence", tracteur: "tractor" };
+    const done = `<span class="pill-tag">${icon("check")} Installé</span>`;
+    let rows = shopRow("bee", `Ruche · ${s.ruches} / ${ru.max}`, `miel + pollinisation (+5 % de récolte par ruche)`,
+      s.ruches >= ru.max ? done : `<button class="btn sm" ${A({ type: "construire", batiment: "ruche" })} ${s.argent < ru.prix ? "disabled" : ""}>${eur(ru.prix)}</button>`);
+    rows += shopRow("wind", `Éolienne · ${s.eoliennes} / ${eo.max}`, `jusqu'à ${eo.gain_max} €/jour selon le vent`,
+      s.eoliennes >= eo.max ? done : `<button class="btn sm" ${A({ type: "construire", batiment: "eolienne" })} ${s.argent < eo.prix ? "disabled" : ""}>${eur(eo.prix)}</button>`);
+    rows += shopRow(d.serre_debloquee ? "greenhouse" : "lock", `Serre · ${d.n_serres} / ${FarmMap.FIELDS.length}`,
+      d.serre_debloquee ? `${eur(se.prix)} · à construire sur une parcelle libre` : `après ${nf0.format(se.ventes_requises)} € de ventes (${eur(s.stats.ventes)})`,
+      d.serre_debloquee ? `<button class="btn ghost sm" ${A({ type: "goto", view: "ferme" })}>Ma ferme</button>` : `<span class="pill-tag grey">Verrouillée</span>`);
+    rows += Object.entries(s.ref.ameliorations).map(([k, u]) => shopRow(upIcons[k], u.nom, u.desc,
+      s.ameliorations.includes(k) ? done : `<button class="btn sm" ${A({ type: "ameliorer", amelioration: k })} ${s.argent < u.prix ? "disabled" : ""}>${eur(u.prix)}</button>`)).join("");
+    const pitch = !s.ruches ? "Des ruches ? Vos fraises vous diront merci, et le miel se vend bien !"
+      : !s.eoliennes ? "Une éolienne, ça vous tente ? Elle se rembourse toute seule !"
+        : !d.serre_debloquee ? "Vendez encore un peu et je vous construis une serre." : "Tout pour moderniser votre ferme !";
+    return card(`${head(`Tenu par ${st.vendeur} · ouvert tous les jours`)}${quote(pitch)}<div class="sell-list">${rows}</div>`)
+      + card(`<div class="card-head"><h3>Elle vous achète</h3></div>${sellRow(s, "laine")}`);
+  }
+  if (id === "fromager") {
+    const c = s.collecte_lait;
+    return card(`${head(`Tenu par ${st.vendeur} · ouvert tous les jours`)}${quote(`Votre lait m'intéresse ! S'il est frais et bio, je le paie mieux.`)}${sellRow(s, "lait")}
+      <div class="collect"><div><b>Collecte chaque soir à ${s.ref.collecte_heure} h</b><div class="muted small">${c ? "Mon camion passe prendre tout votre lait au prix de gros." : "Arrêtée : gardez votre lait pour le marché (attention, il tourne vite)."}</div></div>
+        <button class="switch ${c ? "on" : ""}" ${A({ type: "collecte", actif: !c })}><i></i></button></div>`);
+  }
+  if (id === "boulanger") {
+    return card(`${head(`Tenue par ${st.vendeur} · ouvert tous les jours`)}${quote("Des œufs frais pour mes brioches et du miel pour mes pains d'épices, je prends !")}${sellRow(s, "oeufs")}${sellRow(s, "miel")}`);
+  }
+  if (id === "fleuriste") {
+    const fc = s.previsions.map((p, i) => `<div class="fc">${["Demain", "J+2", "J+3"][i]}${icon(WEATHER_ICON[p.type])}${p.temp}°</div>`).join("");
+    return card(`${head(`Tenue par ${st.vendeur} · les jours de marché`, closedTag)}${quote(absent ? "Je reviens au prochain marché avec mes bouquets !" : "Mes fleurs sentent la météo mieux que la radio. Et votre fumier ferait du bien à mes massifs !")}
+      <div class="forecast stall-fc">${fc}</div>${sellRow(s, "fumier")}`);
+  }
+  if (id === "maraicher") {
+    const ranking = Object.keys(s.ref.cultures).map((k) => [k, s.prix[k] / s.ref.cultures[k].prix])
+      .sort((a, b) => b[1] - a[1]).slice(0, 4)
+      .map(([k, r]) => `<li>${emoji(s, k)} ${s.ref.cultures[k].nom}<span>${r >= 1 ? "+" : ""}${Math.round((r - 1) * 100)} % vs normal${trend(s, k)}</span></li>`).join("");
+    const mine = Object.keys(s.ref.cultures).filter((k) => k !== "mais" && s.stock[k] >= 1);
+    return card(`${head(`${st.vendeur}, votre concurrent · les jours de marché`, closedTag)}${quote(absent ? "Pas de marché aujourd'hui, l'ami ! On se voit au prochain." : "Hé, le voisin ! Ce qui vous reste, je vous le rachète en gros… à mon prix.")}
+      <div class="card-head" style="margin:6px 0 0"><h3>Ce qui se vend bien</h3></div><ul class="mini-list">${ranking}</ul>`)
+      + card(`<div class="card-head"><h3>Il vous rachète en gros</h3></div>${mine.map((k) => sellRow(s, k)).join("") || `<div class="muted small">Aucun fruit ni légume en stock.</div>`}`);
+  }
+  // poissonnier
+  return card(`${head(`Tenu par ${st.vendeur} · les jours de marché`, closedTag)}${quote(absent ? "Le poisson, c'est mardi, jeudi et samedi ! Un conseil quand même :" : "Pas de poisson à la ferme, hein ? Allez, un conseil gratuit :")}
+    <div class="tip">${icon("sparkle")}${STALL_TIPS[Math.floor(d.jour) % STALL_TIPS.length]}</div>`);
+}
+
+// chaque nouvelle vente d'un client fait tinter la caisse au-dessus de votre étal
+let lastSaleKey = null;
+function notifySales(s) {
+  const v = s.marche.dernieres;
+  const key = (x) => `${s.marche.jour}|${x.heure}|${x.produit}|${x.montant}`;
+  if (lastSaleKey === null) { lastSaleKey = v.length ? key(v[0]) : ""; return; }
+  const fresh = [];
+  for (const x of v) { if (key(x) === lastSaleKey) break; fresh.push(x); }
+  if (!fresh.length) return;
+  lastSaleKey = key(v[0]);
+  const total = fresh.reduce((a, x) => a + x.montant, 0);
+  MarketMap.celebrate(`+${nf2.format(total)} €`, fresh.slice(0, 3).map((x) => emoji(s, x.produit)));
+}
+
+let stall = "mon_etal";
+function selectStall(id) {
+  stall = id;
+  MarketMap.select(id);
+  enterAnim($("#stall-panel"));
+  if (S) render(S);
+}
+
+function renderMarket(s, d) {
+  setHTML($("#stall-panel"), stallPanel(s, d, stall));
+  $("#market-hint-sub").textContent = d.marche_ouvert
+    ? `${d.jour_semaine}, jour de marché jusqu'à ${s.ref.marche_heures[1]} h · ${MarketMap.crowdSize()} visiteurs sur la place`
+    : `Marché fermé · prochain : ${d.prochain_marche} · les boutiques restent ouvertes`;
 
   const upIcons = { arrosage: "drop", distributeur: "bowl", reservoir: "tank", cloture: "fence", tracteur: "tractor" };
   setHTML($("#upgrades"), Object.entries(s.ref.ameliorations).map(([k, u]) => {
@@ -324,13 +724,32 @@ function renderMarket(s, d) {
     return `<div class="upg ${owned ? "owned" : ""}"><div class="zone-ico">${icon(upIcons[k])}</div><h4>${u.nom}</h4><p>${u.desc}</p>
       ${owned ? `<span class="pill-tag">${icon("check")} Installé</span>` : `<button class="btn" ${A({ type: "ameliorer", amelioration: k })} ${s.argent < u.prix ? "disabled" : ""}>Acheter · ${eur(u.prix)}</button>`}</div>`;
   }).join(""));
-}
-$("#sell-all").addEventListener("click", async () => {
-  for (const k of ["tomates", "legumes", "lait", "oeufs", "laine"]) {
-    if (S && S.stock[k] >= 1) { await act({ type: "vendre", produit: k }); }
-  }
-});
 
+  const eo = s.ref.batiments.eolienne, se = s.ref.batiments.serre;
+  const eoBtn = s.eoliennes >= eo.max ? `<span class="pill-tag">${icon("check")} ${eo.max} / ${eo.max} installées</span>`
+    : `<button class="btn" ${A({ type: "construire", batiment: "eolienne" })} ${s.argent < eo.prix ? "disabled" : ""}>Acheter · ${eur(eo.prix)}</button>`;
+  let seBody;
+  if (!d.serre_debloquee) {
+    seBody = `${meter("Ventes cumulées", (s.stats.ventes / se.ventes_requises) * 100, "", `${eur(s.stats.ventes)} / ${nf0.format(se.ventes_requises)} €`)}
+      <span class="pill-tag grey">${icon("lock")} Débloquée à ${nf0.format(se.ventes_requises)} € de ventes</span>`;
+  } else {
+    const targets = FarmMap.FIELDS.filter((k) => !s.champs[k].serre);
+    seBody = targets.length ? `<div class="actions">${targets.map((k) => {
+      const free = ["vide", "fletri"].includes(s.champs[k].etat);
+      return `<button class="btn sm" ${A({ type: "construire", batiment: "serre", champ: k })} ${!free || s.argent < se.prix ? "disabled" : ""} title="${free ? "" : "Parcelle occupée : récoltez d'abord"}">${d.noms_champs[k]}</button>`;
+    }).join("")}</div><span class="muted small">${eur(se.prix)} · la parcelle doit être libre</span>`
+      : `<span class="pill-tag">${icon("check")} Toutes les parcelles sont sous serre</span>`;
+  }
+  const ru = s.ref.batiments.ruche;
+  const ruBtn = s.ruches >= ru.max ? `<span class="pill-tag">${icon("check")} ${ru.max} / ${ru.max} installées</span>`
+    : `<button class="btn" ${A({ type: "construire", batiment: "ruche" })} ${s.argent < ru.prix ? "disabled" : ""}>Acheter · ${eur(ru.prix)}</button>`;
+  setHTML($("#buildings"), `<div class="upg ${s.ruches ? "owned" : ""}"><div class="zone-ico">${icon("bee")}</div><h4>Ruche <span class="muted small">${s.ruches} / ${ru.max}</span></h4>
+      <p>${ru.desc} ${s.ruches ? `Aujourd'hui : ${nf1.format(d.miel_jour)} kg de miel.` : ""}</p>${ruBtn}</div>
+    <div class="upg ${s.eoliennes ? "owned" : ""}"><div class="zone-ico">${icon("wind")}</div><h4>Éolienne <span class="muted small">${s.eoliennes} / ${eo.max}</span></h4>
+      <p>${eo.desc} Aujourd'hui : ${eur(eo.gain_max * d.vent)} / jour chacune.</p>${eoBtn}</div>
+    <div class="upg ${d.n_serres ? "owned" : ""} ${d.serre_debloquee ? "" : "locked"}"><div class="zone-ico glass">${icon("greenhouse")}</div><h4>Serre <span class="muted small">${d.n_serres} / ${FarmMap.FIELDS.length}</span></h4>
+      <p>${se.desc} Entretien ${se.entretien} €/jour.</p>${seBody}</div>`);
+}
 // ---------------------------------------------------------------- journal → toasts
 function notifyJournal(s) {
   const top = s.journal[0];
@@ -347,7 +766,7 @@ function notifyJournal(s) {
 
 function renderModal(s) {
   const m = $("#modal");
-  if (s.statut === "en_cours") { m.hidden = true; m.__html = ""; return; }
+  if (s.statut === "en_cours" || s.menu) { m.hidden = true; m.__html = ""; return; }
   const win = s.statut === "gagne";
   setHTML(m, `<div class="modal-card"><div class="modal-emoji">${win ? "🏆" : "🥀"}</div>
     <h2>${win ? "Victoire !" : "Faillite…"}</h2>
@@ -360,6 +779,9 @@ function renderModal(s) {
 ICONS.clock = '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>';
 hydrateIcons();
 $("#hero-art").innerHTML = ART.hero();
+$("#title-art").innerHTML = ART.hero("t-");
 $("#avatar").innerHTML = ART.avatar;
 FarmMap.init($("#map"), selectZone);
+MarketMap.init($("#market-map"), selectStall);
+act({ type: "menu", ouvert: true });   // on arrive toujours sur le menu principal
 poll();

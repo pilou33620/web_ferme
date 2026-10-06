@@ -56,7 +56,13 @@ const ART = (() => {
       <circle r="5" fill="#E2E7EA"/></g>`;
   }
 
-  function hero() {
+  // `p` préfixe les identifiants SVG, pour afficher la bannière à deux endroits (accueil, menu principal)
+  function hero(p = "") {
+    const s = heroSVG();
+    return p ? s.replace(/id="([^"]+)"/g, `id="${p}$1"`).replace(/url\(#([^)]+)\)/g, `url(#${p}$1)`) : s;
+  }
+
+  function heroSVG() {
     let rows = "";
     for (let i = 0; i < 9; i++) {
       const y = 262 + i * 15 + i * i * 1.4;
@@ -82,7 +88,7 @@ const ART = (() => {
       <g class="drift" style="animation-duration:90s;animation-delay:-40s">${cloud(300, 120, .55, .85)}${cloud(900, 70, .9)}</g>
       <path d="M0 210 Q200 150 420 190 T820 175 T1200 190 V380 H0Z" fill="#A7D58A"/>
       <path d="M0 230 Q300 190 600 222 T1200 215 V380 H0Z" fill="#8CC66B"/>
-      ${windmill(570, 92, .78)}${windmill(650, 110, .62)}${windmill(500, 128, .45)}
+      <g class="hero-wind">${windmill(570, 92, .78)}</g><g class="hero-wind">${windmill(650, 110, .62)}</g>
       <g clip-path="url(#wheatclip)"><rect x="250" y="190" width="650" height="80" fill="#F3D27A"/>${stripes}</g>
       ${tree(120, 200, 1.1)}${tree(185, 214, .85, "#6DB04D")}${tree(60, 222, .8, "#579A3D")}
       ${pine(1010, 150, 1)}${pine(1060, 168, .8)}${pine(1110, 140, 1.1)}
@@ -99,16 +105,18 @@ const ART = (() => {
       </g>`;
   }
 
-  function updateHero(svg, h, weather) {
+  function updateHero(svg, h, weather, eoliennes = 0, p = "") {
+    const q = (id) => svg.querySelector(`#${p}${id}`);
+    svg.querySelectorAll(".hero-wind").forEach((g, i) => g.setAttribute("display", i < eoliennes ? "inline" : "none"));
     const [top, bot] = skyAt(h, weather);
-    svg.querySelector("#sky-top").setAttribute("stop-color", top);
-    svg.querySelector("#sky-bot").setAttribute("stop-color", bot);
+    q("sky-top").setAttribute("stop-color", top);
+    q("sky-bot").setAttribute("stop-color", bot);
     const n = nightAmount(h);
-    svg.querySelector("#hero-night").setAttribute("opacity", (n * .45).toFixed(2));
-    svg.querySelector("#hero-stars").setAttribute("opacity", n.toFixed(2));
+    q("hero-night").setAttribute("opacity", (n * .45).toFixed(2));
+    q("hero-stars").setAttribute("opacity", n.toFixed(2));
     // trajectoire du soleil 6h → 20h, de la lune 20h → 6h
     const sunT = (h - 6) / 14;
-    const sun = svg.querySelector("#hero-sun"), moon = svg.querySelector("#hero-moon");
+    const sun = q("hero-sun"), moon = q("hero-moon");
     if (sunT >= 0 && sunT <= 1) {
       sun.setAttribute("cx", 120 + sunT * 960);
       sun.setAttribute("cy", 210 - Math.sin(sunT * Math.PI) * 160);
@@ -120,7 +128,7 @@ const ART = (() => {
       moon.setAttribute("cy", 210 - Math.sin(mt * Math.PI) * 150);
       moon.setAttribute("opacity", .95);
     } else moon.setAttribute("opacity", 0);
-    svg.querySelector("#hero-rain").setAttribute("opacity", weather === "pluie" || weather === "orage" ? .55 : 0);
+    q("hero-rain").setAttribute("opacity", weather === "pluie" || weather === "orage" ? .55 : 0);
   }
 
   const avatar = `<svg viewBox="0 0 64 64">

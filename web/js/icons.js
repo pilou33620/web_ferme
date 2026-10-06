@@ -39,6 +39,13 @@ const ICONS = {
   vet: '<path d="M6 3v6a4 4 0 0 0 8 0V3"/><path d="M10 13v2a5 5 0 0 0 10 0v-2"/><circle cx="20" cy="11" r="2"/>',
   shovel: '<path d="M14 10 4 20M16 4l4 4-3 3-4-4zM2 22l3-3"/>',
   poop: '<path d="M8 10c0-2 2-3 4-3 0-2 1-3 2-4 0 2 2 2 2 4 2 0 3 1 3 3"/><path d="M5 14c0-2 1.5-4 4-4h6c2.5 0 4 2 4 4"/><path d="M3 18c0-2 2-4 4-4h10c2 0 4 2 4 4v1H3z"/>',
+  greenhouse: '<path d="M3 21V11l9-7 9 7v10z"/><path d="M3 11h18M12 4v17M7.5 7.5V21M16.5 7.5V21"/>',
+  wind: '<path d="M12 9v12M9 21h6"/><path d="M12 9V2.5M12 9l-5.6 3.3M12 9l5.6 3.3"/><circle cx="12" cy="9" r="1.4"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  play: '<path d="M8 5.5v13l10.5-6.5z"/>',
+  restart: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/>',
+  bee:'<ellipse cx="12" cy="14" rx="4.5" ry="6"/><path d="M7.6 12.5h8.8M7.8 15.8h8.4"/><path d="M10 8.5C8 5 4.5 5 4.5 7.5S8 10 10 9.5M14 8.5C16 5 19.5 5 19.5 7.5S16 10 14 9.5"/><path d="M12 20v1.5"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   wool: '<circle cx="12" cy="12" r="8"/><path d="M6 8c4 0 9 4 12 9M5 13c4-1 8 1 10 5M9 4.5c2 3 6 5 10 5"/>',
 };
 

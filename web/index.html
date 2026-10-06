@@ -19,13 +19,14 @@
           <div class="brand-name">Val Vert</div>
           <div class="brand-sub">Simulation de ferme</div>
         </div>
+        <button class="menu-btn" id="open-menu" title="Menu principal (Échap)"><span data-icon="menu"></span></button>
       </div>
 
       <nav class="nav">
         <button class="nav-item active" data-view="accueil"><span data-icon="home"></span>Accueil</button>
         <button class="nav-item" data-view="ferme"><span data-icon="map"></span>Ma ferme</button>
         <button class="nav-item" data-view="elevage"><span data-icon="cow"></span>Élevage<em class="badge" id="badge-elevage"></em></button>
-        <button class="nav-item" data-view="marche"><span data-icon="store"></span>Marché</button>
+        <button class="nav-item" data-view="marche"><span data-icon="store"></span>Marché<em class="badge" id="badge-marche"></em></button>
       </nav>
 
       <div class="side-card clock-card">
@@ -140,20 +141,29 @@
             <div class="loc"><span data-icon="pin"></span>Marché de Val Vert · les prix changent chaque jour</div>
           </div>
         </header>
-        <div class="market-grid">
-          <div class="card">
-            <div class="card-head"><h3>Vendre</h3><button class="btn ghost sm" id="sell-all">Tout vendre</button></div>
-            <table class="table" id="sell-table"></table>
+        <div class="farm-layout">
+          <div class="map-card">
+            <div class="map-frame market-frame"><svg id="market-map" viewBox="0 0 1000 700"></svg></div>
+            <div class="map-hint">
+              <span class="hint-icon" data-icon="store"></span>
+              <div><b>Cliquez sur un étal pour parler au marchand</b><br><span class="muted small" id="market-hint-sub"></span></div>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-head"><h3>Acheter</h3></div>
-            <div id="buy-list"></div>
-          </div>
+          <div class="zone-panel" id="stall-panel"></div>
         </div>
+        <div class="section-head"><h2>Constructions</h2><span class="muted small">Rien n'est fourni au départ : à vous de les acheter</span></div>
+        <div class="upgrades" id="buildings"></div>
         <div class="section-head"><h2>Améliorations</h2></div>
         <div class="upgrades" id="upgrades"></div>
       </section>
     </main>
+  </div>
+
+  <!-- MENU PRINCIPAL : affiché à l'ouverture du jeu, le temps est en pause -->
+  <div class="title" id="title">
+    <svg class="title-art" id="title-art" viewBox="0 0 1200 380" preserveAspectRatio="xMidYMid slice"></svg>
+    <div class="title-shade"></div>
+    <div class="title-card" id="title-card"><div class="muted">Chargement de la ferme…</div></div>
   </div>
 
   <div class="toasts" id="toasts"></div>
@@ -162,6 +172,7 @@
   <script src="js/icons.js"></script>
   <script src="js/art.js"></script>
   <script src="js/map.js"></script>
+  <script src="js/market.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
