@@ -25,6 +25,7 @@
       <nav class="nav">
         <button class="nav-item active" data-view="accueil"><span data-icon="home"></span>Accueil</button>
         <button class="nav-item" data-view="ferme"><span data-icon="map"></span>Ma ferme</button>
+        <button class="nav-item" data-view="meteo"><span data-icon="sun"></span>Météo<em class="badge" id="badge-meteo"></em></button>
         <button class="nav-item" data-view="elevage"><span data-icon="cow"></span>Élevage<em class="badge" id="badge-elevage"></em></button>
         <button class="nav-item" data-view="marche"><span data-icon="store"></span>Marché<em class="badge" id="badge-marche"></em></button>
       </nav>
@@ -97,7 +98,7 @@
         <header class="page-head">
           <div>
             <h1>Ma ferme</h1>
-            <div class="loc"><span data-icon="pin"></span>Ferme du Val Vert · 12,5 ha</div>
+            <div class="loc"><span data-icon="pin"></span>Ferme du Val Vert · <span id="farm-area">12,5 ha</span></div>
           </div>
         </header>
         <div class="pills" id="zone-pills"></div>
@@ -113,6 +114,29 @@
             </div>
           </div>
           <div class="zone-panel" id="zone-panel"></div>
+        </div>
+      </section>
+
+      <!-- MÉTÉO -->
+      <section class="view" id="view-meteo">
+        <div class="wx-hero" id="wx-hero">
+          <svg class="wx-scene" id="wx-scene" preserveAspectRatio="xMidYMax slice"></svg>
+          <div class="wx-top">
+            <span class="wx-chip"><span data-icon="pin"></span>Ferme du Val Vert</span>
+            <span class="wx-chip" id="wx-clock"></span>
+          </div>
+          <div class="wx-head" id="wx-head"></div>
+          <div class="wx-modes" id="wx-modes"></div>
+        </div>
+        <div class="wx-grid">
+          <div class="wx-col">
+            <div class="card" id="wx-today"></div>
+            <div class="card" id="wx-hourly"></div>
+          </div>
+          <div class="wx-col">
+            <div class="card" id="wx-week"></div>
+            <div class="card" id="wx-reco"></div>
+          </div>
         </div>
       </section>
 
@@ -173,6 +197,7 @@
   <script src="js/art.js"></script>
   <script src="js/map.js"></script>
   <script src="js/market.js"></script>
+  <script src="js/weather.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

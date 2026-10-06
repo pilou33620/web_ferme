@@ -21,7 +21,8 @@ class EngineTest(unittest.TestCase):
     def test_time_and_new_day(self):
         self.g.advance(MIN_PER_DAY)
         self.assertEqual(self.g.day, 2)
-        self.assertEqual(len(self.g.s["previsions"]), 3)
+        self.assertEqual(len(self.g.s["previsions"]), 6)
+        self.assertEqual(len(self.g.view()["derive"]["semaine"]), 7)
 
     def test_feed_marks_meal(self):
         self.g.advance(60)  # 06:00
@@ -263,6 +264,59 @@ class EngineTest(unittest.TestCase):
         self.g.advance(500)
         g2 = Game.loads(self.g.dumps())
         self.assertEqual(g2.view()["derive"], self.g.view()["derive"])
+
+    def test_buy_new_fields(self):
+        g = self.g
+        g.s["argent"] = 100
+        with self.assertRaises(ActionError):
+            g.act({"type": "acheter_parcelle"})
+        g.s["argent"] = 10000
+        charges = g.charges()
+        g.act({"type": "acheter_parcelle"})
+        self.assertIn("parcelle_d", g.s["champs"])
+        self.assertEqual(g.s["argent"], 10000 - 1800)
+        self.assertGreater(g.charges(), charges)
+        self.assertIn("terrain", g.s["objectifs"])
+        v = g.view()
+        self.assertEqual(v["derive"]["noms_champs"]["parcelle_d"], "Parcelle D")
+        self.assertEqual(v["derive"]["terrain_a_vendre"]["cle"], "parcelle_e")
+        self.assertIn("parcelle_d", v["ref"]["parcelles"])
+        # on peut semer, récolter et mettre une serre sur la nouvelle parcelle
+        g.act({"type": "semer", "champ": "parcelle_d", "culture": "salades"})
+        g.s["champs"]["parcelle_d"].update(etat="mur", croissance=100.0)
+        g.act({"type": "recolter", "champ": "parcelle_d"})
+        self.assertGreater(g.s["stock"]["salades"], 0)
+        for _ in range(5):
+            g.s["argent"] = 10000
+            g.act({"type": "acheter_parcelle"})
+        self.assertEqual(len(g.s["champs"]), 9)
+        self.assertIsNone(g.view()["derive"]["terrain_a_vendre"])
+        with self.assertRaises(ActionError):
+            g.act({"type": "acheter_parcelle"})
+        g2 = Game.loads(g.dumps())
+        self.assertEqual(g2.field_name("parcelle_i"), "Parcelle I")
+
+    def test_weather_screen_data(self):
+        g = self.g
+        g.advance(7 * 60)   # 12:00
+        d = g.view()["derive"]
+        self.assertEqual(len(d["horaire"]), 8)
+        self.assertEqual(d["horaire"][0]["temp"], round(d["temperature"]))
+        md = d["meteo_detail"]
+        self.assertTrue(0 <= md["humidite_air"] <= 100)
+        self.assertGreater(md["vent_kmh"], 0)
+        self.assertEqual(d["semaine"][0]["jour"], "Aujourd'hui")
+        g.s["meteo"] = {"type": "pluie", "nom": "Pluie", "temp": 16}
+        g.advance(MIN_PER_DAY)
+        self.assertEqual(g.s["meteo_hier"], "pluie")
+
+    def test_old_save_gets_longer_forecast(self):
+        st = json.loads(self.g.dumps())
+        st["previsions"] = st["previsions"][:3]
+        del st["meteo_hier"]
+        g = Game(st)
+        self.assertEqual(len(g.s["previsions"]), 6)
+        self.assertIsNone(g.s["meteo_hier"])
 
     def test_diligent_player_progresses(self):
         """Un joueur appliqué doit gagner de l'argent sur 15 jours."""

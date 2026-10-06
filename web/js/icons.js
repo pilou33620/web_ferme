@@ -46,6 +46,10 @@ const ICONS = {
   restart: '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/>',
   bee:'<ellipse cx="12" cy="14" rx="4.5" ry="6"/><path d="M7.6 12.5h8.8M7.8 15.8h8.4"/><path d="M10 8.5C8 5 4.5 5 4.5 7.5S8 10 10 9.5M14 8.5C16 5 19.5 5 19.5 7.5S16 10 14 9.5"/><path d="M12 20v1.5"/>',
   lock:'<rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  rainbow: '<path d="M2.5 18a9.5 9.5 0 0 1 19 0"/><path d="M6 18a6 6 0 0 1 12 0"/><path d="M9.5 18a2.5 2.5 0 0 1 5 0"/>',
+  breeze: '<path d="M3 8h10.5a2.5 2.5 0 1 0-2.5-2.5"/><path d="M3 12h15.5a2.5 2.5 0 1 1-2.5 2.5"/><path d="M3 16h8"/>',
+  live: '<circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/>',
+  thermo: '<path d="M10 14.5V5a2 2 0 0 1 4 0v9.5a4 4 0 1 1-4 0z"/><path d="M12 10v6"/>',
   wool: '<circle cx="12" cy="12" r="8"/><path d="M6 8c4 0 9 4 12 9M5 13c4-1 8 1 10 5M9 4.5c2 3 6 5 10 5"/>',
 };
 

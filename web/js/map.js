@@ -1,8 +1,10 @@
-// Carte de la ferme vue du dessus : décor statique, cultures, serres, éoliennes, réservoir, animaux animés, zoom.
+// Carte de la ferme vue du dessus : décor statique, cultures, serres, éoliennes, réservoir, animaux animés,
+// tracteur qui circule sur les chemins et travaille les champs, terrains à vendre, zoom.
 
 const FarmMap = (() => {
   const NS = "http://www.w3.org/2000/svg";
-  const W = 1000, H = 760;
+  const W = 1000, BASE_H = 760, ROW_H = 218;   // chaque rangée de terrains achetés ajoute 218 px en bas
+  let H = BASE_H;
 
   const ZONES = {
     maison:    { nom: "Maison",      icon: "house",  box: [20, 20, 450, 232] },
@@ -22,11 +24,16 @@ const FarmMap = (() => {
   };
   const SCALE = { vaches: .78, moutons: .9, cochons: .9, poules: 1 };
   const MAX_SHOWN = { vaches: 20, moutons: 14, cochons: 8, poules: 26 };
-  const FIELDS = ["parcelle_a", "parcelle_b", "parcelle_c"];
+  const BASE_FIELDS = ["parcelle_a", "parcelle_b", "parcelle_c"];
+  const FIELDS = [...BASE_FIELDS];       // tableau mis à jour sur place quand on achète un terrain
+  const EXTRA_SLOTS = ["parcelle_d", "parcelle_e", "parcelle_f", "parcelle_g", "parcelle_h", "parcelle_i"];
+  const slotBox = (i) => [i % 2 ? 530 : 20, 802 + Math.floor(i / 2) * ROW_H, 450, 158];
+  const RX = 500;                        // axe du chemin vertical
   // emplacements des éoliennes près de la maison (un arbre y pousse tant qu'on n'en a pas acheté)
   const TURBINE_SLOTS = [[340, 70], [432, 64]];
 
   let svg, layers = {}, vb = [0, 0, W, H], anim = null, onSelect = () => {};
+  let layoutSig = "", sale = null, roadsY = [282, 500], gameRunning = true, upgraded = false, rainy = false;
   const herd = new Map();     // id → entité animée
   const cache = {};           // signatures de rendu
   let night = 0, lastT = 0, focused = null, names = {};
@@ -62,9 +69,13 @@ const FarmMap = (() => {
     // routes
     const road = "#EADBBD", edge = "#D8C59E";
     s += `<rect x="478" y="0" width="44" height="${H}" fill="${road}"/>`;
-    s += `<rect x="0" y="262" width="${W}" height="40" fill="${road}"/><rect x="0" y="480" width="${W}" height="40" fill="${road}"/>`;
-    s += `<path d="M478 0V${H}M522 0V${H}M0 262H${W}M0 302H${W}M0 480H${W}M0 520H${W}" stroke="${edge}" stroke-width="2"/>`;
-    s += `<path d="M500 0V${H}M0 282H${W}M0 500H${W}" stroke="#F7EEDC" stroke-width="3" stroke-dasharray="14 14"/>`;
+    for (const y of roadsY) {
+      s += `<rect x="0" y="${y - 20}" width="${W}" height="40" fill="${road}"/>`;
+      s += `<path d="M0 ${y - 20}H${W}M0 ${y + 20}H${W}" stroke="${edge}" stroke-width="2"/>`;
+      s += `<path d="M0 ${y}H${W}" stroke="#F7EEDC" stroke-width="3" stroke-dasharray="14 14"/>`;
+    }
+    s += `<path d="M478 0V${H}M522 0V${H}" stroke="${edge}" stroke-width="2"/>`;
+    s += `<path d="M500 0V${H}" stroke="#F7EEDC" stroke-width="3" stroke-dasharray="14 14"/>`;
     // canalisation d'irrigation
     s += `<path d="M512 0V${H}" stroke="#7FB6E0" stroke-width="3"/>`;
     for (let y = 30; y < H; y += 60) s += `<circle cx="512" cy="${y}" r="4.5" fill="#4C93D1" stroke="#fff" stroke-width="1.5"/>`;
@@ -88,13 +99,21 @@ const FarmMap = (() => {
     s += `</g>`;
     s += `<g transform="translate(384 196)"><rect x="-12" y="-21" width="24" height="42" rx="8" fill="#2F6FB5"/><rect x="-9" y="-12" width="18" height="10" rx="3" fill="#BFE0F7"/><rect x="-9" y="6" width="18" height="8" rx="3" fill="#BFE0F7"/></g>`;
     s += tree(48, 58, 18) + tree(298, 140, 15, "#5DA548");
-    for (let x = 220; x < 300; x += 18) s += bush(x, 222, 8);
-    s += `<g id="tractor-art" opacity="0" transform="translate(300 214)"><rect x="-18" y="-11" width="36" height="22" rx="5" fill="#3A8A3F"/><rect x="-4" y="-9" width="14" height="18" rx="3" fill="#2B2B2B" opacity=".5"/><rect x="-24" y="-16" width="14" height="8" rx="2" fill="#222"/><rect x="-24" y="8" width="14" height="8" rx="2" fill="#222"/><rect x="12" y="-14" width="10" height="6" rx="2" fill="#222"/><rect x="12" y="8" width="10" height="6" rx="2" fill="#222"/></g>`;
+    for (let x = 220; x < 290; x += 18) s += bush(x, 222, 8);
+    // cour gravillonnée où le tracteur dort la nuit
+    s += `<rect x="290" y="206" width="44" height="48" rx="8" fill="#E2D3B2"/><path d="M296 214h32M296 224h32M296 234h32M296 244h32" stroke="#D3C19B" stroke-width="1.5" stroke-dasharray="3 4"/>`;
 
     // ---- haies des champs
     for (const k of FIELDS) {
       const [x, y, w, h] = ZONES[k].box;
       s += `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="#8CC067" stroke="#4E8F3B" stroke-width="10"/>`;
+    }
+    // bosquets dans les coins des rangées de terrains pas encore achetés
+    for (let i = 0; i < EXTRA_SLOTS.length; i++) {
+      const [x, y, w, h] = slotBox(i);
+      if (y + h > H || ZONES[EXTRA_SLOTS[i]] || (sale && sale.cle === EXTRA_SLOTS[i])) continue;
+      s += `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="#B4D98F"/>`;
+      for (let j = 0; j < 7; j++) s += tree(x + 40 + seeded(i * 9 + j) * (w - 80), y + 30 + seeded(i * 7 + j + 3) * (h - 60), 10 + seeded(j + i) * 9, j % 2 ? "#5DA548" : "#4E9A3A");
     }
 
     // ---- enclos
@@ -321,10 +340,227 @@ const FarmMap = (() => {
     return s;
   }
 
+  // ------------------------------------------------------------------ terrain à vendre
+  function saleSVG() {
+    if (!sale) return "";
+    const [x, y, w, h] = ZONES.a_vendre.box;
+    const cx = x + w / 2, cy = y + h / 2;
+    let s = `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="#C3E09F"/>`;
+    for (let i = 0; i < 40; i++) s += `<path d="M${x + 20 + seeded(i + 300) * (w - 40)} ${y + 20 + seeded(i + 600) * (h - 40)} l2 -5 l2 5" stroke="#9FCB78" stroke-width="1.4" fill="none"/>`;
+    s += `<rect x="${x + 10}" y="${y + 10}" width="${w - 20}" height="${h - 20}" rx="20" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="10 9" opacity=".9"/>`;
+    for (const [px, py] of [[x + 10, y + 10], [x + w - 10, y + 10], [x + 10, y + h - 10], [x + w - 10, y + h - 10]]) {
+      s += `<circle cx="${px}" cy="${py}" r="5" fill="#B58553" stroke="#fff" stroke-width="2"/>`;
+    }
+    // panneau en bois
+    s += `<g transform="translate(${x + 70} ${cy - 6})"><rect x="-3" y="0" width="6" height="34" fill="#7A5434"/>
+      <rect x="-46" y="-30" width="92" height="38" rx="6" fill="#C89B62" stroke="#8E6638" stroke-width="2"/>
+      <text x="0" y="-6" text-anchor="middle" class="sale-sign">À VENDRE</text></g>`;
+    s += `<g class="sale-cta"><circle cx="${cx}" cy="${cy}" r="30" fill="#fff" opacity=".95"/>
+      <path d="M${cx - 11} ${cy}h22M${cx} ${cy - 11}v22" stroke="#2F7A4B" stroke-width="5" stroke-linecap="round"/>
+      <animate attributeName="opacity" values="1;.7;1" dur="2.4s" repeatCount="indefinite"/></g>`;
+    s += `<text x="${cx}" y="${cy + 56}" text-anchor="middle" class="sale-price">Cliquez pour acheter</text>`;
+    return s;
+  }
+
+  // Recalcule la disposition quand on achète un terrain : zones, routes, hauteur de la carte.
+  function relayout(state) {
+    const extras = Object.keys(state.champs).filter((k) => !BASE_FIELDS.includes(k)).sort();
+    sale = state.derive.terrain_a_vendre;
+    for (const k of Object.keys(ZONES)) if (k.startsWith("parcelle_") && !BASE_FIELDS.includes(k) || k === "a_vendre") delete ZONES[k];
+    FIELDS.length = 0;
+    FIELDS.push(...BASE_FIELDS, ...extras);
+    let used = 0;
+    extras.forEach((k) => {
+      const i = Math.max(0, EXTRA_SLOTS.indexOf(k));
+      ZONES[k] = { nom: k.replace("parcelle_", "Parcelle ").replace(/ (\w)$/, (m, l) => " " + l.toUpperCase()), icon: "sprout", box: slotBox(i) };
+      used = Math.max(used, i + 1);
+    });
+    if (sale) {
+      const i = EXTRA_SLOTS.indexOf(sale.cle);
+      ZONES.a_vendre = { nom: "À vendre", icon: "plus", box: slotBox(i) };
+      used = Math.max(used, i + 1);
+    }
+    const rows = Math.ceil(used / 2);
+    H = BASE_H + rows * ROW_H;
+    roadsY = [282, 500, ...Array.from({ length: rows }, (_, r) => 772 + r * ROW_H)];
+    svg.style.aspectRatio = `${W} / ${H}`;
+    layers.base.innerHTML = staticLayer();
+    layers.fields.innerHTML = "";
+    for (const k of FIELDS) { layers[k] = el("g", {}, layers.fields); delete cache[k]; }
+    layers.sale.innerHTML = saleSVG();
+    for (const id of ["map-heat", "map-night"]) svg.querySelector(`#${id}`).setAttribute("height", H);
+    if (focused && !ZONES[focused]) focused = null;
+    setVB(boxFor(focused));
+    tractor.reset();
+  }
+
+  // ------------------------------------------------------------------ tracteur
+  // Il circule sur les chemins, va travailler les parcelles en plein champ (passes aller-retour, avec
+  // traces de roues), et rentre dormir dans la cour la nuit. Rouge d'origine, vert une fois le neuf acheté.
+  const tractor = (() => {
+    const T = { x: 312, y: 232, a: -Math.PI / 2, path: [], mode: "idle", wait: 2, puff: 0, dist: 0, lastRut: 0, plow: false };
+    let g, body, hood, lights, plowEl, treads = [];
+    const PARK = { x: 312, y: 232 };
+
+    function build(parent) {
+      g = el("g", { class: "tractor" }, parent);
+      g.innerHTML = `
+        <g class="t-lights" opacity="0"><path d="M22 -9L86 -30L86 4Z M22 9L86 -4L86 30Z" fill="#FFE9A3" opacity=".45"/></g>
+        <g class="t-plow" opacity="0"><rect x="-36" y="-17" width="9" height="34" rx="3" fill="#8A8F94"/><path d="M-27 -12h7M-27 0h7M-27 12h7" stroke="#6C7176" stroke-width="3"/></g>
+        <rect x="-19" y="-12" width="44" height="28" rx="7" fill="#000" opacity=".16"/>
+        <rect x="-22" y="-19" width="18" height="9" rx="3" fill="#2B2B2B"/><rect x="-22" y="10" width="18" height="9" rx="3" fill="#2B2B2B"/>
+        <path class="t-tread" d="M-21 -14.5H-5M-21 14.5H-5" stroke="#555" stroke-width="7" stroke-dasharray="2 2.5"/>
+        <rect x="9" y="-14" width="10" height="6" rx="2" fill="#2B2B2B"/><rect x="9" y="8" width="10" height="6" rx="2" fill="#2B2B2B"/>
+        <rect class="t-body" x="-16" y="-10" width="38" height="20" rx="6" fill="#C8392E"/>
+        <rect class="t-hood" x="5" y="-7" width="16" height="14" rx="4" fill="#A72F26"/>
+        <path d="M9 -4h10M9 0h10M9 4h10" stroke="#000" stroke-width="1" opacity=".18"/>
+        <rect x="-17" y="-11" width="18" height="22" rx="4" fill="#F4F1EA" stroke="#D5CFC2" stroke-width="1"/>
+        <rect x="-14" y="-8" width="12" height="16" rx="2" fill="#fff" opacity=".6"/>
+        <circle cx="6" cy="-7.5" r="2.4" fill="#3A3A3A"/>`;
+      body = g.querySelector(".t-body"); hood = g.querySelector(".t-hood");
+      lights = g.querySelector(".t-lights"); plowEl = g.querySelector(".t-plow");
+      treads = [...g.querySelectorAll(".t-tread")];
+    }
+
+    const onV = (p) => Math.abs(p.x - RX) < 1;
+    // itinéraire par les chemins : on rejoint le chemin vertical, puis la bonne route horizontale
+    function route(from, to) {
+      const pts = [];
+      if (onV(from) && onV(to)) return [to];
+      if (!onV(from) && !onV(to) && Math.abs(from.y - to.y) < 1) return [to];
+      if (!onV(from)) pts.push({ x: RX, y: from.y });
+      if (!onV(to)) pts.push({ x: RX, y: to.y });
+      pts.push(to);
+      return pts;
+    }
+    // point du chemin le plus proche (pour repartir de la cour ou d'un champ)
+    function nearestRoad(p) {
+      let best = { x: RX, y: Math.max(20, Math.min(H - 20, p.y)) }, d = Math.abs(p.x - RX);
+      for (const y of roadsY) if (Math.abs(p.y - y) < d) { d = Math.abs(p.y - y); best = { x: Math.max(30, Math.min(W - 30, p.x)), y }; }
+      return best;
+    }
+    const roadEntry = (box) => {
+      const [x, y, w, h] = box, cx = x + w / 2;
+      let ry = roadsY[0], d = 1e9;
+      for (const r of roadsY) {
+        const dd = Math.min(Math.abs(r - y), Math.abs(r - (y + h)));
+        if (dd < d) { d = dd; ry = r; }
+      }
+      return { x: cx, y: ry, above: ry < y };
+    };
+
+    function plan(state) {
+      const h = state.derive.heure_dec;
+      const nightTime = h >= 21 || h < 6;
+      const here = { x: T.x, y: T.y };
+      const parked = Math.hypot(T.x - PARK.x, T.y - PARK.y) < 2;
+      if (nightTime) {
+        if (parked) { T.mode = "sleep"; T.wait = 5; return; }
+        const r0 = nearestRoad(here);
+        T.path = [...(onRoad(here) ? [] : [r0]), ...route(onRoad(here) ? here : r0, { x: PARK.x, y: 282 }), { x: PARK.x, y: PARK.y }];
+        T.mode = "park";
+        return;
+      }
+      const start = parked ? [{ x: PARK.x, y: 282 }] : onRoad(here) ? [] : [nearestRoad(here)];
+      const from = start.length ? start[start.length - 1] : here;
+      const fields = FIELDS.filter((k) => state.champs[k] && !state.champs[k].serre);
+      if (fields.length && Math.random() < .55) {
+        // travail au champ : labour d'une parcelle libre, sinon binage entre les rangs
+        const free = fields.filter((k) => ["vide", "fletri"].includes(state.champs[k].etat));
+        const pool = free.length && Math.random() < .7 ? free : fields;
+        const k = pool[Math.floor(Math.random() * pool.length)];
+        const box = ZONES[k].box, e = roadEntry(box);
+        const [x, y, w, hh] = box, x0 = x + 44, x1 = x + w - 44;
+        const edgeY = e.above ? y + 34 : y + hh - 34;
+        const step = 26, nRows = Math.floor((hh - 68) / step) + 1;
+        const n = Math.min(nRows, 3 + Math.floor(Math.random() * 3));
+        const first = Math.floor(Math.random() * (nRows - n + 1));
+        const rows = Array.from({ length: n }, (_, i) => (e.above ? y + 34 + (first + i) * step : y + hh - 34 - (first + i) * step));
+        const passes = [];
+        rows.forEach((ry, i) => {
+          const [a, b] = i % 2 ? [x1, x0] : [x0, x1];
+          passes.push({ x: a, y: ry, work: i > 0 }, { x: b, y: ry, work: true });
+        });
+        T.path = [...start, ...route(from, { x: e.x, y: e.y }), { x: e.x, y: edgeY }, { x: x0, y: rows[0] },
+          ...passes, { x: e.x, y: rows[rows.length - 1] }, { x: e.x, y: edgeY }, { x: e.x, y: e.y }];
+        T.mode = "work";
+      } else {
+        const ends = roadsY.flatMap((y) => [{ x: 40, y }, { x: RX, y }, { x: W - 40, y }]).concat([{ x: RX, y: 30 }, { x: RX, y: H - 30 }]);
+        const to = ends[Math.floor(Math.random() * ends.length)];
+        T.path = [...start, ...route(from, to)];
+        T.mode = "roam";
+      }
+    }
+    const onRoad = (p) => onV(p) || roadsY.some((y) => Math.abs(p.y - y) < 1);
+
+    function rut(x, y, a) {
+      const r = el("rect", { x: -3, y: -15, width: 6, height: 30, rx: 2, class: "rut",
+        transform: `translate(${x.toFixed(1)} ${y.toFixed(1)}) rotate(${(a * 57.3).toFixed(0)})` }, layers.ruts);
+      setTimeout(() => r.remove(), 40000);
+    }
+    function puff(x, y) {
+      const c = el("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: 4, class: "puff" }, layers.puffs);
+      setTimeout(() => c.remove(), 1700);
+    }
+
+    let lastState = null;
+    function step(dt) {
+      if (!g || !lastState) return;
+      const moving = gameRunning && T.mode !== "sleep";
+      if (moving && T.wait > 0) T.wait -= dt;
+      else if (moving && !T.path.length) {
+        if (T.mode === "park") { T.mode = "sleep"; T.a = -Math.PI / 2; }
+        else { T.wait = 1 + Math.random() * 3; plan(lastState); }
+      } else if (moving) {
+        const p = T.path[0], dx = p.x - T.x, dy = p.y - T.y, d = Math.hypot(dx, dy);
+        const working = T.mode === "work" && p.work;
+        const speed = (working ? 26 : 58) * (upgraded ? 1.25 : 1) * (rainy ? .8 : 1);
+        if (d < .5) { T.path.shift(); }
+        else {
+          // on tourne d'abord, puis on avance (virages propres aux carrefours)
+          const ta = Math.atan2(dy, dx);
+          let da = ta - T.a; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+          T.a += da * Math.min(1, dt * 6);
+          const v = Math.min(d, speed * dt * (Math.abs(da) > 1.2 ? .25 : 1));
+          T.x += (dx / d) * v; T.y += (dy / d) * v; T.dist += v;
+          if (working && T.dist - T.lastRut > 7) { T.lastRut = T.dist; rut(T.x - Math.cos(T.a) * 26, T.y - Math.sin(T.a) * 26, T.a); }
+        }
+        T.plow = working;
+      } else if (T.mode === "sleep" && lastState) {
+        const h = lastState.derive.heure_dec;
+        if (!(h >= 21 || h < 6)) { T.mode = "idle"; T.wait = Math.random() * 3; }
+      }
+      // fumée : plus dense quand il roule ou laboure
+      T.puff -= dt;
+      if (T.mode !== "sleep" && gameRunning && T.puff <= 0) {
+        T.puff = T.plow ? .18 : (T.path.length ? .3 : .7);
+        puff(T.x + Math.cos(T.a) * 6 - Math.sin(T.a) * -7.5, T.y + Math.sin(T.a) * 6 + Math.cos(T.a) * -7.5);
+      }
+      treads.forEach((t) => t.setAttribute("stroke-dashoffset", (-T.dist * .6).toFixed(1)));
+      plowEl.setAttribute("opacity", T.plow ? 1 : 0);
+      g.setAttribute("transform", `translate(${T.x.toFixed(1)} ${T.y.toFixed(1)}) rotate(${(T.a * 57.3).toFixed(1)})`);
+    }
+
+    function update(state) {
+      lastState = state;
+      upgraded = state.ameliorations.includes("tracteur");
+      body.setAttribute("fill", upgraded ? "#3A8A3F" : "#C8392E");
+      hood.setAttribute("fill", upgraded ? "#2E7234" : "#A72F26");
+      lights.setAttribute("opacity", night > .45 ? 1 : 0);
+    }
+    function reset() {
+      // la carte a changé de forme : on repart proprement d'un point du réseau de chemins
+      if (!g) return;
+      T.path = [];
+      if (T.mode !== "sleep") { const p = nearestRoad({ x: T.x, y: T.y }); T.x = p.x; T.y = p.y; T.mode = "idle"; T.wait = .5; }
+    }
+    return { build, step, update, reset, state: T };
+  })();
+
   // ------------------------------------------------------------------ étiquettes / zones cliquables
   function labelsSVG() {
     let s = "";
-    const label = (id) => names[id] || ZONES[id].nom;
+    const label = (id) => (id === "a_vendre" && sale ? `À vendre · ${new Intl.NumberFormat("fr-FR").format(sale.prix)} €` : names[id] || ZONES[id].nom);
     for (const [id, z] of Object.entries(ZONES)) {
       const [x, y, w, h] = z.box;
       s += `<g class="zone" data-zone="${id}"><rect class="zone-hit" x="${x}" y="${y}" width="${w}" height="${h}" rx="24"/></g>`;
@@ -423,6 +659,7 @@ const FarmMap = (() => {
     lastT = t;
     if (anim) anim(t);
     stepHerd(dt);
+    tractor.step(dt);
     requestAnimationFrame(loop);
   }
 
@@ -433,17 +670,24 @@ const FarmMap = (() => {
     svg.innerHTML = `<defs><filter id="lblshadow" x="-20%" y="-30%" width="140%" height="180%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-opacity=".18"/></filter></defs>`;
     layers.base = el("g", {}, svg);
     layers.base.innerHTML = staticLayer();
-    for (const k of FIELDS) layers[k] = el("g", {}, svg);
+    layers.fields = el("g", {}, svg);
+    for (const k of FIELDS) layers[k] = el("g", {}, layers.fields);
+    layers.sale = el("g", {}, svg);
+    layers.ruts = el("g", { "pointer-events": "none" }, svg);
     layers.wind = el("g", {}, svg);
     layers.hives = el("g", {}, svg);
     layers.tank = el("g", {}, svg);
     layers.animals = el("g", {}, svg);
+    layers.tractor = el("g", { "pointer-events": "none" }, svg);
+    tractor.build(layers.tractor);
+    layers.puffs = el("g", { "pointer-events": "none" }, svg);
     layers.weather = el("g", { "pointer-events": "none" }, svg);
     layers.weather.innerHTML = `<rect id="map-heat" width="${W}" height="${H}" fill="#FFB347" opacity="0"/>
       <rect id="map-night" width="${W}" height="${H}" fill="#0E1A33" opacity="0"/>
-      <g id="map-rain" opacity="0" stroke="#E8F2FA" stroke-width="2" stroke-linecap="round">${Array.from({ length: 90 }, (_, i) => {
-        const x = (i * 113) % W, y = (i * 71) % H, d = (.5 + (i % 5) * .08).toFixed(2);
-        return `<line x1="${x}" y1="${y}" x2="${x - 5}" y2="${y + 14}"><animateTransform attributeName="transform" type="translate" from="0 -${H}" to="0 0" dur="${d}s" repeatCount="indefinite"/></line>`;
+      <g id="map-rain" opacity="0" stroke="#E8F2FA" stroke-width="2" stroke-linecap="round">${Array.from({ length: 170 }, (_, i) => {
+        const RH = BASE_H + 3 * ROW_H;   // la pluie couvre la carte même agrandie au maximum
+        const x = (i * 113) % W, y = (i * 71) % RH, d = ((.5 + (i % 5) * .08) * RH / BASE_H).toFixed(2);
+        return `<line x1="${x}" y1="${y}" x2="${x - 5}" y2="${y + 14}"><animateTransform attributeName="transform" type="translate" from="0 -${RH}" to="0 0" dur="${d}s" repeatCount="indefinite"/></line>`;
       }).join("")}</g>`;
     layers.labels = el("g", {}, svg);
     layers.labels.innerHTML = labelsSVG();
@@ -455,6 +699,12 @@ const FarmMap = (() => {
   }
 
   function update(state) {
+    const extras = Object.keys(state.champs).filter((k) => !BASE_FIELDS.includes(k)).sort();
+    const sig = `${extras.join()}|${state.derive.terrain_a_vendre ? state.derive.terrain_a_vendre.cle : ""}`;
+    if (sig !== layoutSig) { layoutSig = sig; relayout(state); cache.labels = null; }
+    else if (sale && state.derive.terrain_a_vendre && sale.prix !== state.derive.terrain_a_vendre.prix) { sale = state.derive.terrain_a_vendre; layers.sale.innerHTML = saleSVG(); }
+    gameRunning = state.vitesse > 0 && !state.menu;
+    rainy = !!state.derive.pluie;
     for (const k of FIELDS) {
       const f = state.champs[k];
       const sig = `${f.etat}|${f.culture}|${f.serre}|${Math.round(f.croissance / 4)}|${Math.round(f.humidite / 8)}|${f.humidite < 18}`;
@@ -474,14 +724,14 @@ const FarmMap = (() => {
     }
     const tsig = `${Math.round(state.reservoir.niveau / state.reservoir.capacite * 60)}|${state.ameliorations.join()}`;
     if (cache.tank !== tsig) { cache.tank = tsig; layers.tank.innerHTML = tankSVG(state.reservoir, state.ameliorations); }
-    svg.querySelector("#tractor-art").setAttribute("opacity", state.ameliorations.includes("tracteur") ? 1 : 0);
     syncHerd(state.animaux);
     const h = state.derive.heure_dec, w = state.meteo.type;
     night = ART.nightAmount(h);
     svg.querySelector("#map-night").setAttribute("opacity", (night * .42).toFixed(2));
     svg.querySelector("#map-rain").setAttribute("opacity", w === "pluie" || w === "orage" ? .6 : 0);
     svg.querySelector("#map-heat").setAttribute("opacity", w === "canicule" && night < .5 ? .08 : 0);
+    tractor.update(state);
   }
 
-  return { init, update, focus, ZONES, FIELDS };
+  return { init, update, focus, ZONES, FIELDS, tractor: tractor.state };
 })();

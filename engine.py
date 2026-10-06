@@ -29,6 +29,11 @@ FIELDS = {
     "parcelle_b": {"nom": "Parcelle B", "taille": 1.0},
     "parcelle_c": {"nom": "Parcelle C", "taille": 1.0},
 }
+# Terrains à acheter pour agrandir la ferme, dans l'ordre (prix croissant).
+EXTRA_FIELDS = [("parcelle_d", 1800), ("parcelle_e", 2600), ("parcelle_f", 3500),
+                ("parcelle_g", 4500), ("parcelle_h", 5500), ("parcelle_i", 6500)]
+EXTRA_FIELD_UPKEEP = 8        # €/jour par parcelle achetée (fermage, entretien des haies)
+FORECAST_DAYS = 6             # prévisions : demain + 5 jours (7 jours avec aujourd'hui)
 
 # Cultures au choix. `soif` multiplie l'évaporation ; `serre` = culture réservée aux serres.
 # Le produit récolté porte la même clé que la culture.
@@ -134,12 +139,19 @@ SERRE_EVAP = 0.4
 RAIN_WATER = 0.15             # humidité gagnée par minute de pluie (plein champ seulement)
 
 WEATHER = {  # `vent` : de 0 à 1, fait tourner les éoliennes ; `miel` : activité des abeilles ; `clients` : affluence
-    "soleil":   {"nom": "Ensoleillé", "temp": 26, "pluie": 0.0, "evap": 1.0, "vent": 0.35, "miel": 1.2, "clients": 1.0, "poids": 40},
-    "nuageux":  {"nom": "Nuageux", "temp": 20, "pluie": 0.0, "evap": 0.7, "vent": 0.55, "miel": 0.8, "clients": 1.0, "poids": 25},
-    "pluie":    {"nom": "Pluie", "temp": 16, "pluie": 1.0, "evap": 0.3, "vent": 0.7, "miel": 0.2, "clients": 0.6, "poids": 18},
-    "orage":    {"nom": "Orage", "temp": 19, "pluie": 1.6, "evap": 0.4, "vent": 1.0, "miel": 0.0, "clients": 0.3, "poids": 7},
-    "canicule": {"nom": "Canicule", "temp": 35, "pluie": 0.0, "evap": 2.0, "vent": 0.15, "miel": 0.6, "clients": 0.8, "poids": 10},
+    # `humidite` : humidité de l'air (%) ; `uv` : indice UV à midi ; `risque` : risque de pluie (%)
+    "soleil":   {"nom": "Ensoleillé", "temp": 26, "pluie": 0.0, "evap": 1.0, "vent": 0.35, "miel": 1.2, "clients": 1.0, "poids": 40,
+                 "humidite": 62, "uv": 7, "risque": 5},
+    "nuageux":  {"nom": "Nuageux", "temp": 20, "pluie": 0.0, "evap": 0.7, "vent": 0.55, "miel": 0.8, "clients": 1.0, "poids": 25,
+                 "humidite": 74, "uv": 4, "risque": 25},
+    "pluie":    {"nom": "Pluie", "temp": 16, "pluie": 1.0, "evap": 0.3, "vent": 0.7, "miel": 0.2, "clients": 0.6, "poids": 18,
+                 "humidite": 92, "uv": 2, "risque": 90},
+    "orage":    {"nom": "Orage", "temp": 19, "pluie": 1.6, "evap": 0.4, "vent": 1.0, "miel": 0.0, "clients": 0.3, "poids": 7,
+                 "humidite": 88, "uv": 1, "risque": 95},
+    "canicule": {"nom": "Canicule", "temp": 35, "pluie": 0.0, "evap": 2.0, "vent": 0.15, "miel": 0.6, "clients": 0.8, "poids": 10,
+                 "humidite": 38, "uv": 10, "risque": 0},
 }
+WIND_KMH = 45                 # vent à 1,0 = 45 km/h
 
 OBJECTIVES = [
     {"id": "recolte", "titre": "Faire une première récolte"},
@@ -150,6 +162,7 @@ OBJECTIVES = [
     {"id": "troupeau", "titre": "Atteindre 60 animaux"},
     {"id": "eolienne", "titre": "Installer une éolienne"},
     {"id": "serre", "titre": "Construire une serre"},
+    {"id": "terrain", "titre": "Acheter une nouvelle parcelle"},
     {"id": "fortune", "titre": f"Atteindre {TARGET_MONEY:,} € en caisse".replace(",", " ")},
 ]
 
@@ -169,6 +182,20 @@ def quality_mult(q: float) -> float:
 
 def bio_mult(bio: float) -> float:
     return 1 + 0.3 * bio
+
+
+def temp_at(base: float, hour: float) -> float:
+    """Température à une heure donnée : fraîche la nuit, maximum en début d'après-midi."""
+    return round(base - 6 + 9 * max(0.0, math.sin((hour - 6) / 24 * 2 * math.pi)), 1)
+
+
+def field_label(key: str) -> str:
+    """« parcelle_d » → « Parcelle D »."""
+    return FIELDS[key]["nom"] if key in FIELDS else f"Parcelle {key.rsplit('_', 1)[-1].upper()}"
+
+
+def field_size(key: str) -> float:
+    return FIELDS[key]["taille"] if key in FIELDS else 1.0
 
 
 def buy_chance(ratio: float) -> float:
@@ -212,6 +239,7 @@ class Game:
             "statut": "en_cours",
             "jours_dans_le_rouge": 0,
             "meteo": None,
+            "meteo_hier": None,
             "previsions": [],
             "reservoir": {"niveau": 6720.0, "capacite": 8200.0},
             "champs": fields,
@@ -271,7 +299,7 @@ class Game:
             s["champs"] = fields
             s["stock"]["carottes"] = s["stock"].get("carottes", 0.0) + s["stock"].pop("legumes", 0.0)
         s["version"] = 3
-        for k, v in {"menu": False, "vitesse_menu": 1, "eoliennes": 0, "ruches": 0, "reputation": 50.0, "collecte_lait": True, "collecte_jour": 0,
+        for k, v in {"meteo_hier": None, "menu": False, "vitesse_menu": 1, "eoliennes": 0, "ruches": 0, "reputation": 50.0, "collecte_lait": True, "collecte_jour": 0,
                      "dernier_chimique": -10 * MIN_PER_DAY, "repas_bio": 0.0, "etal": self.default_stall(),
                      "marche": self.empty_market(0), "qualite": {}, "bio": {}}.items():
             s.setdefault(k, v)
@@ -291,6 +319,10 @@ class Game:
         for f in s["champs"].values():
             for k, v in self.empty_field().items():
                 f.setdefault(k, v)
+        if s.get("meteo"):   # anciennes sauvegardes : 3 jours de prévisions seulement
+            rng = random.Random(f"{s['seed']}-{s['minute']:.0f}-meteo-ext")
+            while len(s["previsions"]) < FORECAST_DAYS:
+                s["previsions"].append(self._pick_weather(rng))
 
     # -------- utilitaires --------
     @property
@@ -323,8 +355,15 @@ class Game:
         return sum(1 for f in self.s["champs"].values() if f["serre"])
 
     def field_name(self, key: str) -> str:
-        nom = FIELDS[key]["nom"]
+        nom = field_label(key)
         return nom.replace("Parcelle", "Serre") if self.s["champs"][key]["serre"] else nom
+
+    def n_extra_fields(self) -> int:
+        return sum(1 for k in self.s["champs"] if k not in FIELDS)
+
+    def next_field(self) -> tuple[str, float] | None:
+        """Prochain terrain à vendre (clé, prix), ou None quand tout est acheté."""
+        return next(((k, p) for k, p in EXTRA_FIELDS if k not in self.s["champs"]), None)
 
     def wind_income(self) -> float:
         """Gain journalier des éoliennes avec la météo du jour."""
@@ -333,7 +372,7 @@ class Game:
 
     def charges(self) -> float:
         return 35 + 1.5 * self.n_animals() + 12 * len(self.s["ameliorations"]) \
-            + BUILDINGS["serre"]["entretien"] * self.n_serres()
+            + BUILDINGS["serre"]["entretien"] * self.n_serres() + EXTRA_FIELD_UPKEEP * self.n_extra_fields()
 
     def serre_unlocked(self) -> bool:
         return self.s["stats"]["ventes"] >= BUILDINGS["serre"]["ventes_requises"]
@@ -342,8 +381,39 @@ class Game:
         return sum(len(a["liste"]) for a in self.s["animaux"].values())
 
     def temperature(self) -> float:
-        base = self.s["meteo"]["temp"]
-        return round(base - 6 + 9 * max(0.0, math.sin((self.hour - 6) / 24 * 2 * math.pi)), 1)
+        return temp_at(self.s["meteo"]["temp"], self.hour)
+
+    def weather_details(self) -> dict:
+        """Ce qu'affiche l'écran Météo : humidité de l'air, ressenti, vent, UV, risque de pluie."""
+        w = WEATHER[self.s["meteo"]["type"]]
+        t = self.temperature()
+        day = max(0.0, math.sin((self.hour - 6) / 24 * 2 * math.pi))   # 0 la nuit, 1 vers 12 h
+        hum = clamp(w["humidite"] + 12 * (1 - day) - 4 * day, 10, 100)
+        vent = w["vent"] * WIND_KMH * (0.75 + 0.35 * day)
+        ressenti = t + (0.08 * (hum - 55) if t > 22 else 0) - (vent / 12 if t < 20 else 0)
+        rosee = t - (100 - hum) / 5
+        return {"humidite_air": round(hum), "ressenti": round(ressenti), "vent_kmh": round(vent),
+                "uv": round(w["uv"] * day), "uv_max": w["uv"], "risque_pluie": w["risque"], "rosee": round(rosee)}
+
+    def hourly(self, n: int = 8) -> list:
+        """Les prochaines heures : température et temps (le lendemain prend la première prévision)."""
+        out = []
+        base_h = int(self.hour)
+        for i in range(n):
+            h = base_h + i
+            today = h < 24
+            m = self.s["meteo"] if today else self.s["previsions"][0]
+            out.append({"heure": "Maint." if i == 0 else f"{h % 24:02d} h", "h": h % 24, "type": m["type"],
+                        "temp": round(temp_at(m["temp"], h % 24)), "risque": WEATHER[m["type"]]["risque"]})
+        return out
+
+    def week(self) -> list:
+        """Aujourd'hui + les prévisions : nom du jour, temps, températures mini / maxi."""
+        days = [self.s["meteo"], *self.s["previsions"]]
+        return [{"jour": "Aujourd'hui" if i == 0 else "Demain" if i == 1 else JOURS[(self.weekday + i) % 7],
+                 "type": d["type"], "nom": d["nom"], "min": round(d["temp"] - 6), "max": round(d["temp"] + 3),
+                 "risque": WEATHER[d["type"]]["risque"], "marche": self.market_day((self.weekday + i) % 7)}
+                for i, d in enumerate(days)]
 
     def raining(self) -> bool:
         return WEATHER[self.s["meteo"]["type"]]["pluie"] > 0
@@ -440,8 +510,9 @@ class Game:
         rng = self.rng("meteo")
         if initial:
             self.s["meteo"] = {"type": "soleil", "nom": "Ensoleillé", "temp": 28}
-            self.s["previsions"] = [self._pick_weather(rng) for _ in range(3)]
+            self.s["previsions"] = [self._pick_weather(rng) for _ in range(FORECAST_DAYS)]
         else:
+            self.s["meteo_hier"] = self.s["meteo"]["type"]
             self.s["meteo"] = self.s["previsions"].pop(0)
             self.s["previsions"].append(self._pick_weather(rng))
 
@@ -841,7 +912,7 @@ class Game:
 
     def expected_yield(self, key: str) -> float:
         f = self.s["champs"][key]
-        return CROPS[f["culture"]]["rendement"] * FIELDS[key]["taille"] * (0.3 + 0.7 * f["sante"] / 100) \
+        return CROPS[f["culture"]]["rendement"] * field_size(key) * (0.3 + 0.7 * f["sante"] / 100) \
             * (1.2 if self.has("tracteur") else 1.0) * (1.2 if f["chimique"] else 1.0) * self.pollination()
 
     def _a_nourrir(self, a):
@@ -991,6 +1062,19 @@ class Game:
             return f"{self.field_name(key)} construite."
         raise ActionError("Construction inconnue.")
 
+    def _a_acheter_parcelle(self, a):
+        """Agrandit la ferme : le prochain terrain à vendre devient une parcelle libre."""
+        nxt = self.next_field()
+        if nxt is None:
+            raise ActionError("Il n'y a plus de terrain à vendre autour de la ferme.")
+        key, prix = nxt
+        self._pay(prix)
+        self.s["champs"][key] = self.empty_field(60.0)
+        prix_txt = f"{prix:,}".replace(",", " ")
+        self.log(f"Nouveau terrain acheté : la {field_label(key)} est prête à être semée (−{prix_txt} €, "
+                 f"{EXTRA_FIELD_UPKEEP} €/jour d'entretien).", "succes")
+        return f"{field_label(key)} achetée !"
+
     def _a_vitesse(self, a):
         v = a.get("valeur")
         if v not in (0, 1, 2, 4, 8):
@@ -1032,6 +1116,7 @@ class Game:
             "troupeau": self.n_animals() >= 60,
             "eolienne": self.s["eoliennes"] >= 1,
             "serre": self.n_serres() >= 1,
+            "terrain": self.n_extra_fields() >= 1,
             "fortune": self.s["argent"] >= TARGET_MONEY,
         }
         for o in OBJECTIVES:
@@ -1116,8 +1201,15 @@ class Game:
             "qualite_miel": round(self.honey_quality()),
             "miel_bio": self.honey_bio() == 1.0,
             "pollinisation": round((self.pollination() - 1) * 100),
+            "meteo_detail": self.weather_details(),
+            "horaire": self.hourly(),
+            "semaine": self.week(),
+            "terrain_a_vendre": ({"cle": nxt[0], "nom": field_label(nxt[0]), "prix": nxt[1]}
+                                 if (nxt := self.next_field()) else None),
         }
-        s["ref"] = {"parcelles": FIELDS, "cultures": CROPS, "animaux": ANIMALS, "produits": ITEMS,
+        s["ref"] = {"parcelles": {k: {"nom": field_label(k), "taille": field_size(k)} for k in s["champs"]},
+                    "meteo": WEATHER, "vent_kmh": WIND_KMH, "terrain_entretien": EXTRA_FIELD_UPKEEP,
+                    "terrains_max": len(FIELDS) + len(EXTRA_FIELDS), "cultures": CROPS, "animaux": ANIMALS, "produits": ITEMS,
                     "ameliorations": UPGRADES, "batiments": BUILDINGS, "acheteurs": BUYERS, "emoji": EMOJI,
                     "prix_foin": FEED_PRICE, "prix_foin_bio": FEED_BIO_PRICE, "prix_chimique": CHEM_PRICE,
                     "prix_veto": VET_PRICE, "objectifs": OBJECTIVES, "serre_boost": SERRE_BOOST,

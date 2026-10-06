@@ -107,6 +107,11 @@ async function act(action) {
     const res = await r.json();
     if (res.etat) render(res.etat);
     if (res.ok && action.type === "nouvelle_partie") resetUI();
+    if (res.ok && action.type === "arroser") WeatherScene.splash();
+    if (res.ok && action.type === "acheter_parcelle") {
+      const keys = Object.keys(res.etat.champs).sort();
+      selectZone(keys[keys.length - 1]);
+    }
     if (action.type !== "vitesse" && action.type !== "menu") toast(res.message, res.ok ? "ok" : "err");
   } catch (e) {
     toast("Le serveur ne répond pas.", "err");
@@ -123,6 +128,7 @@ document.addEventListener("click", (ev) => {
     if (a.type === "cat") { cat = a.cat; return render(S); }
     if (a.type === "stall") return selectStall(a.stall);
     if (a.type === "confirmer") { confirmNew = a.oui; return render(S); }
+    if (a.type === "meteo_mode") { wxMode = a.mode; return render(S); }
     return act(a);
   }
 });
@@ -133,6 +139,7 @@ function go(v) {
   view = v;
   $$(".nav-item").forEach((n) => n.classList.toggle("active", n.dataset.view === v));
   $$(".view").forEach((s) => s.classList.toggle("active", s.id === `view-${v}`));
+  WeatherScene.setActive(v === "meteo");
   if (S) render(S);
 }
 $$(".nav-item").forEach((n) => n.addEventListener("click", () => go(n.dataset.view)));
@@ -158,9 +165,11 @@ function render(s) {
   MarketMap.update(s, myGoods(s));
   notifySales(s);
   ART.updateHero($("#hero-art"), d.heure_dec, s.meteo.type, s.eoliennes);
+  WeatherScene.update(s);
   $(".hero").classList.toggle("night", ART.nightAmount(d.heure_dec) > .5);
   if (view === "accueil") renderHome(s, d);
   if (view === "ferme") renderFarm(s, d);
+  if (view === "meteo") renderWeather(s, d);
   if (view === "elevage") renderLivestock(s, d);
   if (view === "marche") renderMarket(s, d);
   notifyJournal(s);
@@ -248,6 +257,8 @@ function renderSidebar(s, d) {
   $("#goal-label").textContent = s.jours_dans_le_rouge
     ? `⚠ Dans le rouge depuis ${s.jours_dans_le_rouge} jour(s)`
     : `Objectif ${nf0.format(d.objectif_argent)} €`;
+  const wxAlert = d.semaine.slice(0, 2).some((w) => w.type === "orage" || w.type === "canicule");
+  $("#badge-meteo").textContent = wxAlert ? "!" : "";
   const alerts = d.malades + d.repas.filter((r) => r.statut === "maintenant").length;
   $("#badge-elevage").textContent = alerts || "";
 }
@@ -261,7 +272,7 @@ function renderHome(s, d) {
   $("#farm-health-label").textContent = d.sante_ferme >= 80 ? "En bonne santé" : d.sante_ferme >= 55 ? "À surveiller" : "En difficulté";
   $("#farm-health-sub").textContent = `Animaux ${d.sante_animaux} % · Cultures ${Math.round(2 * d.sante_ferme - d.sante_animaux)} %`;
 
-  const fc = s.previsions.map((p, i) => `<div class="fc">${["Demain", "J+2", "J+3"][i]}${icon(WEATHER_ICON[p.type])}${p.temp}°</div>`).join("");
+  const fc = s.previsions.slice(0, 3).map((p, i) => `<div class="fc">${["Demain", "J+2", "J+3"][i]}${icon(WEATHER_ICON[p.type])}${p.temp}°</div>`).join("");
   setHTML($("#weather-card"), `<div class="weather-now"><div class="weather-ico ${WEATHER_CLS[s.meteo.type]}">${icon(WEATHER_ICON[s.meteo.type])}</div>
     <div><div class="temp-big">${Math.round(d.temperature)}°C</div><div class="muted small">${s.meteo.nom} · Humidité du sol ${d.humidite_moy} %</div></div></div>
     <div class="forecast">${fc}</div>`);
@@ -288,11 +299,15 @@ function renderFarm(s, d) {
   const pills = [[null, "map", "Vue d'ensemble"], ["maison", "house", "Maison"],
     ...FarmMap.FIELDS.map((k) => [k, fieldIcon(s.champs[k]), d.noms_champs[k]]),
     ["enclos", "fence", "Enclos"], ["reservoir", "tank", "Réservoir"]];
-  setHTML($("#zone-pills"), pills.map(([id, ic, l]) => `<button class="pill ${zone === id ? "active" : ""}" ${A({ type: "zone", zone: id })}>${icon(ic)}${l}</button>`).join(""));
+  if (d.terrain_a_vendre) pills.push(["a_vendre", "plus", "Agrandir"]);
+  setHTML($("#zone-pills"), pills.map(([id, ic, l]) => `<button class="pill ${id === "a_vendre" ? "sale" : ""} ${zone === id ? "active" : ""}" ${A({ type: "zone", zone: id })}>${icon(ic)}${l}</button>`).join(""));
   $("#map-hint").style.display = zone ? "none" : "flex";
+  $("#farm-area").textContent = farmArea(s);
   $("#map-hint-sub").textContent = `${Object.keys(FarmMap.ZONES).length} zones · ${d.n_cultures} cultures · ${d.n_animaux} animaux`;
   let html;
+  if (zone && !FarmMap.ZONES[zone]) zone = null;    // terrain acheté entre-temps
   if (!zone) html = overviewPanel(s, d);
+  else if (zone === "a_vendre") html = salePanel(s, d);
   else if (zone === "maison") html = housePanel(s, d);
   else if (zone === "enclos") html = penPanel(s, d);
   else if (zone === "reservoir") html = tankPanel(s, d);
@@ -304,15 +319,18 @@ function meter(label, value, cls = "", right) {
   return `<div class="meter"><div class="meter-row">${label}<span>${right ?? pct(value)}</span></div><div class="bar ${cls}"><i style="width:${Math.max(0, Math.min(100, value))}%"></i></div></div>`;
 }
 
+const farmArea = (s) => `${nf1.format(12.5 + Object.keys(s.champs).length - 3)} ha`;
+
 function overviewPanel(s, d) {
   const rows = FarmMap.FIELDS.map((k) => {
     const f = s.champs[k], [st, c] = FIELD_STATE[f.etat];
     const crop = f.culture ? ` · ${emoji(s, f.culture)} ${s.ref.cultures[f.culture].nom}` : "";
     return `<li style="cursor:pointer" ${A({ type: "zone", zone: k })}><b>${d.noms_champs[k]}<span class="muted">${crop}</span></b><span class="pill-tag ${c}">${st}</span></li>`;
   }).join("");
-  return `<div class="zone-card"><div class="zone-top"><div class="zone-ico">${icon("map")}</div><div><div class="zone-name">Vue d'ensemble</div><div class="muted small">Ferme du Val Vert · 12,5 ha</div></div></div>
+  return `<div class="zone-card"><div class="zone-top"><div class="zone-ico">${icon("map")}</div><div><div class="zone-name">Vue d'ensemble</div><div class="muted small">Ferme du Val Vert · ${farmArea(s)}</div></div></div>
     <div class="kv"><div><b>${d.n_cultures}</b><span>Cultures</span></div><div><b>${d.n_animaux}</b><span>Animaux</span></div><div><b>${pct(s.reservoir.niveau / s.reservoir.capacite * 100)}</b><span>Eau</span></div></div>
-    <ul class="mini-list">${rows}</ul></div>
+    <ul class="mini-list">${rows}</ul>
+    ${d.terrain_a_vendre ? `<div class="actions"><button class="btn ghost" ${A({ type: "zone", zone: "a_vendre" })}>${icon("plus")}Agrandir · ${d.terrain_a_vendre.nom} · ${eur(d.terrain_a_vendre.prix)}</button></div>` : ""}</div>
     <div class="zone-card">${meter("Santé de la ferme", d.sante_ferme, barCls(d.sante_ferme))}${meter("Humidité moyenne du sol", d.humidite_moy, "blue")}${meter("Nourriture des animaux", d.nourriture, barCls(d.nourriture))}</div>`;
 }
 
@@ -405,6 +423,19 @@ function greenhouseCard(s, d, k, f, free) {
     ${free ? "" : `<div class="muted small" style="margin-top:8px">Récoltez d'abord : la parcelle doit être libre.</div>`}</div>`;
 }
 
+// terrain à vendre : il devient une parcelle libre de plus
+function salePanel(s, d) {
+  const t = d.terrain_a_vendre;
+  if (!t) return `<div class="zone-card"><div class="muted">Tous les terrains autour de la ferme sont achetés.</div></div>`;
+  const n = Object.keys(s.champs).length, max = s.ref.terrains_max;
+  return `<div class="zone-card sale-card"><div class="zone-top"><div class="zone-ico" style="background:var(--green-soft);color:var(--green)">${icon("plus")}</div>
+      <div><div class="zone-name">Terrain à vendre</div><div class="muted small">Prairie de 1 ha bordée d'une haie</div></div></div>
+    <div class="kv"><div><b>${eur(t.prix)}</b><span>Prix</span></div><div><b>${s.ref.terrain_entretien} €</b><span>Entretien / jour</span></div><div><b>${n} → ${n + 1}</b><span>Parcelles (max ${max})</span></div></div>
+    <div class="muted small">Une fois acheté, il devient la <b>${t.nom}</b> : libre, à semer comme les autres. Vous pourrez aussi y construire une serre, et le tracteur viendra la travailler.</div>
+    <div class="actions"><button class="btn green" ${A({ type: "acheter_parcelle" })} ${s.argent < t.prix ? "disabled" : ""}>${icon("plus")}Acheter la ${t.nom} · ${eur(t.prix)}</button></div>
+    ${s.argent < t.prix ? `<div class="muted small" style="margin-top:8px">Il vous manque ${eur(t.prix - s.argent)}.</div>` : ""}</div>`;
+}
+
 function housePanel(s, d) {
   const charges = d.charges;
   const ups = s.ameliorations.map((u) => `<li>${s.ref.ameliorations[u].nom}<span>✓</span></li>`).join("") || `<li>Aucune pour l'instant<span>—</span></li>`;
@@ -469,6 +500,149 @@ function tankPanel(s, d) {
     <div class="actions">${smart ? `<button class="btn green" disabled>${icon("check")}Arrosage intelligent actif</button>`
       : `<button class="btn green" ${A({ type: "ameliorer", amelioration: "arrosage" })}>${icon("sparkle")}Arrosage intelligent · 1 200 €</button>`}</div></div>
     <div class="zone-card"><div class="card-head"><h3>Stockage</h3><button class="btn ghost sm" ${A({ type: "goto", view: "marche" })}>Vendre</button></div><ul class="mini-list">${stock}</ul></div>`;
+}
+
+// ---------------------------------------------------------------- météo
+let wxMode = null;            // null = la météo du jeu en direct, sinon l'ambiance choisie en aperçu
+const MOOD_ICON = { soleil: "sun", nuageux: "cloud", vent: "breeze", pluie: "rain", orage: "storm", canicule: "heat", eclaircie: "rainbow" };
+const MOOD_TEMP = { soleil: 28, nuageux: 25, vent: 24, pluie: 21, orage: 19, canicule: 36, eclaircie: 26 };
+const MOOD_TEXT = {
+  soleil: "Ciel dégagé et petite brise sur les champs.",
+  nuageux: "Les nuages arrivent par l'ouest, l'air se rafraîchit.",
+  vent: "Les rafales forcissent : les éoliennes tournent à plein régime.",
+  pluie: "Il pleut sur la ferme : le réservoir et les sols se remplissent.",
+  orage: "Orage sur la ferme : les cultures en plein champ souffrent.",
+  canicule: "Chaleur écrasante : les sols sèchent à vue d'œil.",
+  eclaircie: "La pluie est passée. Le sol est humide et l'arc-en-ciel est sorti.",
+};
+const wxCls = (t) => (t === "pluie" || t === "orage" ? "rain" : t === "nuageux" ? "cloud" : "");
+const tempAt = (b, h) => b - 6 + 9 * Math.max(0, Math.sin(((h - 6) / 24) * 2 * Math.PI));
+const lc = (j) => (j === "Aujourd'hui" ? "aujourd'hui" : j.toLowerCase());
+const uvLabel = (u) => (u <= 2 ? "Faible" : u <= 5 ? "Modéré" : u <= 7 ? "Élevé" : u <= 10 ? "Très élevé" : "Extrême");
+
+function renderWeather(s, d) {
+  const liveMood = WeatherScene.liveMood(s), mood = wxMode || liveMood;
+  WeatherScene.setMood(mood, !wxMode);
+  $("#wx-hero").classList.toggle("dark", !wxMode && ART.nightAmount(d.heure_dec) > .5);
+  $("#wx-clock").textContent = `${d.jour_semaine} · ${d.heure}`;
+  const temp = wxMode ? MOOD_TEMP[mood] : Math.round(d.temperature);
+  const clearNight = ART.nightAmount(d.heure_dec) > .5 && ["soleil", "canicule"].includes(s.meteo.type);
+  const label = wxMode ? WeatherScene.MOODS[mood].nom : liveMood === "eclaircie" ? "Éclaircie" : clearNight ? "Nuit étoilée" : s.meteo.nom;
+  setHTML($("#wx-head"), `<div class="wx-temp">${temp}<sup>°C</sup></div><div class="wx-label">${label}</div>
+    ${wxMode ? `<button class="wx-preview" ${A({ type: "meteo_mode", mode: null })}>Aperçu · revenir au direct</button>` : ""}`);
+  setHTML($("#wx-modes"), `<button class="wx-mode live ${wxMode ? "" : "on"}" title="La météo du jeu" ${A({ type: "meteo_mode", mode: null })}>${icon("live")}En direct</button>`
+    + WeatherScene.ORDER.map((m) => `<button class="wx-mode ${wxMode === m ? "on" : ""}" title="${WeatherScene.MOODS[m].nom}" ${A({ type: "meteo_mode", mode: m })}>${icon(MOOD_ICON[m])}</button>`).join(""));
+
+  // conditions du jour (toujours la vraie météo du jeu)
+  const md = d.meteo_detail, base = s.meteo.temp;
+  const hs = Array.from({ length: 19 }, (_, i) => 5 + i), ts = hs.map((h) => tempAt(base, h));
+  const lo = Math.min(...ts), hi = Math.max(...ts);
+  const px = (h) => ((h - 5) / 18) * 70 + 2, py = (t) => 30 - ((t - lo) / (hi - lo || 1)) * 24;
+  const curH = Math.min(23, Math.max(5, d.heure_dec));
+  const spark = `<svg class="wx-spark" viewBox="0 0 74 34"><path d="${hs.map((h, i) => `${i ? "L" : "M"}${px(h).toFixed(1)} ${py(ts[i]).toFixed(1)}`).join("")}" stroke="#E9A93A" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+    <circle cx="${px(curH).toFixed(1)}" cy="${py(tempAt(base, curH)).toFixed(1)}" r="3.6" fill="#fff" stroke="#C98A1A" stroke-width="2"/></svg>`;
+  const spin = (3.2 - 2.8 * d.vent).toFixed(2);
+  const turbine = `<svg class="wx-mini-turbine" viewBox="0 0 38 38"><path d="M18 16L16.5 37h3L19 16Z" fill="#C9D2D9"/>
+    <g style="transform-origin:18.5px 15px;animation:spin ${spin}s linear infinite"><path d="M18.5 15C20 12 20.5 6 19.3 1h-1.6C16.5 6 17 12 18.5 15Z" fill="#9AA6B0"/>
+    <path d="M18.5 15C20 12 20.5 6 19.3 1h-1.6C16.5 6 17 12 18.5 15Z" fill="#9AA6B0" transform="rotate(120 18.5 15)"/><path d="M18.5 15C20 12 20.5 6 19.3 1h-1.6C16.5 6 17 12 18.5 15Z" fill="#9AA6B0" transform="rotate(240 18.5 15)"/></g>
+    <circle cx="18.5" cy="15" r="2.2" fill="#6F7B85"/></svg>`;
+  const nextRain = d.semaine.findIndex((w, i) => i > 0 && w.risque >= 90);
+  const tank = (s.reservoir.niveau / s.reservoir.capacite) * 100;
+  const card = (ic, cls, right, k, v, sub, extra = "") => `<div class="wx-card"><div class="wx-card-top"><div class="wx-ic ${cls}">${icon(ic)}</div>${right}</div>
+    <div class="wx-k">${k}</div><div class="wx-v">${v}</div><div class="wx-s">${sub}</div>${extra}</div>`;
+  setHTML($("#wx-today"), `<div class="card-head"><h3>Conditions du jour</h3><span class="live-tag">En direct</span></div>
+    <div class="wx-sub">${d.jour_semaine} ${d.jour} · ${MOOD_TEXT[liveMood]}</div>
+    <div class="wx-cards">
+      ${card("thermo", "a", spark, "Température", `${Math.round(d.temperature)}°`, `Ressenti ${md.ressenti}°`)}
+      ${card("drop", "b", `<div class="wx-gauge"><i style="height:${md.humidite_air}%"></i></div>`, "Humidité de l'air", `${md.humidite_air} %`, `Point de rosée ${md.rosee}°`)}
+      ${card("breeze", "g", turbine, "Vent", `${md.vent_kmh} km/h`, s.eoliennes ? `Éoliennes : ${eur(d.gain_eoliennes)} / jour` : "Aucune éolienne installée")}
+      ${card("rain", "b", "", "Risque de pluie", `${md.risque_pluie} %`, d.pluie ? "Les champs s'arrosent tout seuls" : nextRain > 0 ? `Pluie attendue ${lc(d.semaine[nextRain].jour)}` : "Pas de pluie prévue")}
+      ${card("sun", "p", `<span class="pill-tag ${md.uv_max >= 8 ? "bad" : md.uv_max >= 6 ? "warn" : ""}">${uvLabel(md.uv_max)}</span>`, "Indice UV", `${md.uv}`, `Maximum ${md.uv_max} vers 13 h`,
+        `<div class="wx-uv"><div class="wx-uv-bar"><i style="left:${Math.min(100, (md.uv / 11) * 100)}%"></i></div></div>`)}
+      ${card("sprout", "g", `<span class="pill-tag ${tank < 25 ? "bad" : "info"}">Réservoir ${pct(tank)}</span>`, "Humidité du sol", `${d.humidite_moy} %`, `Moyenne de vos ${Object.keys(s.champs).length} parcelles`)}
+    </div>`);
+
+  const now = d.horaire[0];
+  setHTML($("#wx-hourly"), `<div class="card-head"><h3>Heure par heure</h3><span class="muted small">Maintenant · ${s.ref.meteo[now.type].nom} · ${now.risque} % de pluie</span></div>
+    <div class="wx-hours">${d.horaire.map((h, i) => {
+      const nightH = h.h >= 21 || h.h < 6;
+      const ic = nightH && (h.type === "soleil" || h.type === "canicule") ? "moon" : WEATHER_ICON[h.type];
+      return `<div class="wx-hour ${i ? "" : "now"} ${wxCls(h.type)}">${h.heure}${icon(ic)}<b>${h.temp}°</b><small>${h.risque >= 25 ? `${h.risque} %` : ""}</small></div>`;
+    }).join("")}</div>`);
+
+  const wmin = Math.min(...d.semaine.map((w) => w.min)), wmax = Math.max(...d.semaine.map((w) => w.max));
+  const pos = (t) => ((t - wmin) / (wmax - wmin || 1)) * 100;
+  setHTML($("#wx-week"), `<div class="card-head"><h3>Prévisions 7 jours</h3><span class="muted small">${wmin}° – ${wmax}°</span></div>
+    <ul class="wx-days">${d.semaine.map((w, i) => `<li class="wx-day ${i ? "" : "today"} ${wxCls(w.type)}">
+      <div class="d">${w.jour}<small>${w.marche ? "🧺 Jour de marché" : w.nom}</small></div>${icon(WEATHER_ICON[w.type])}
+      <span class="rk">${w.risque >= 25 ? `${w.risque} %` : ""}</span><span class="mn">${w.min}°</span>
+      <div class="wx-range"><i style="left:${pos(w.min)}%;right:${100 - pos(w.max)}%"></i>${i ? "" : `<b style="left:${pos(Math.round(d.temperature))}%"></b>`}</div>
+      <span class="mx">${w.max}°</span></li>`).join("")}</ul>`);
+
+  const recos = farmAdvice(s, d);
+  setHTML($("#wx-reco"), `<div class="card-head"><div><h3>Conseils pour la ferme</h3><div class="muted small">D'après vos cultures et les prévisions</div></div></div>
+    <div class="wx-recos">${recos.map((r) => `<div class="wx-reco ${r.cls || ""}"><div class="wx-ic ${r.cls === "bad" ? "a" : r.cls === "info" ? "b" : "g"}">${icon(r.ic)}</div>
+      <div><span class="when">${r.when}</span><h4>${r.title}</h4><p>${r.text}</p>
+      ${r.btn ? `<button class="btn sm ${r.cls === "bad" ? "" : "green"}" ${A(r.btn.act)}>${r.btn.label}</button>` : ""}</div></div>`).join("")}</div>`);
+}
+
+// conseils concrets tirés de l'état de la ferme et des prévisions
+function farmAdvice(s, d) {
+  const out = [], week = d.semaine, name = (k) => d.noms_champs[k];
+  const fields = Object.keys(s.champs);
+  const growing = (k) => ["seme", "pousse", "mur"].includes(s.champs[k].etat);
+  const rainSoon = week.slice(0, 3).findIndex((w) => w.risque >= 90);
+  const dry = fields.filter((k) => growing(k) && s.champs[k].humidite < 50).sort((a, b) => s.champs[a].humidite - s.champs[b].humidite);
+  if (dry.length) {
+    const k = dry[0], f = s.champs[k];
+    const rainHelps = !f.serre && rainSoon >= 0 && rainSoon <= 1 && f.humidite >= 25;
+    if (rainHelps) {
+      out.push({ cls: "info", ic: "rain", when: week[rainSoon].jour, title: "La pluie va arroser pour vous",
+        text: `${name(k)} à ${Math.round(f.humidite)} % d'humidité, mais la pluie arrive ${lc(week[rainSoon].jour)}. Gardez l'eau du réservoir.` });
+    } else if (!(d.pluie && !f.serre)) {
+      const hot = ["soleil", "canicule"].includes(week[1].type);
+      out.push({ cls: f.humidite < 25 ? "bad" : "warn", ic: "drop", when: f.humidite < 25 ? "Urgent" : "Aujourd'hui",
+        title: `Arroser la ${name(k)}`,
+        text: `Sol à ${Math.round(f.humidite)} %${f.humidite < 25 ? " : les plants flétrissent sous 15 %" : ""}.${hot ? " Demain s'annonce sec, l'arrosage tiendra mieux en début de journée." : ""}`,
+        btn: s.reservoir.niveau >= 600 ? { label: `Arroser · 600 L`, act: { type: "arroser", champ: k } } : null });
+    }
+  }
+  const stormIdx = week.findIndex((w, i) => i <= 2 && w.type === "orage");
+  if (stormIdx >= 0) {
+    const open = fields.filter((k) => !s.champs[k].serre);
+    const ripe = open.filter((k) => s.champs[k].etat === "mur"), exposed = open.filter(growing);
+    out.push({ cls: "bad", ic: "storm", when: week[stormIdx].jour, title: "Orage annoncé",
+      text: ripe.length ? `Récoltez la ${name(ripe[0])} avant : l'orage abîme les cultures en plein champ.`
+        : exposed.length ? "Il peut abîmer une parcelle en plein champ (−25 % de santé). Les serres protègent leurs cultures." : "Vos parcelles ne risquent rien pour l'instant.",
+      btn: ripe.length ? { label: `Récolter la ${name(ripe[0])}`, act: { type: "recolter", champ: ripe[0] } } : null });
+  }
+  const heatIdx = week.findIndex((w, i) => i <= 2 && w.type === "canicule");
+  if (heatIdx >= 0) {
+    out.push({ cls: "warn", ic: "heat", when: week[heatIdx].jour, title: "Canicule en vue",
+      text: `Les sols sèchent deux fois plus vite et la pousse ralentit au-dessus de 34 °C.${s.ameliorations.includes("arrosage") ? " L'arrosage intelligent prendra le relais." : " Gardez de l'eau dans le réservoir."}` });
+  }
+  const mk = week.findIndex((w, i) => i <= 3 && w.marche && (i > 0 || d.heure_dec < s.ref.marche_heures[1]));
+  if (mk >= 0) {
+    const w = week[mk], wet = w.risque >= 90;
+    out.push({ cls: wet ? "info" : "", ic: "store", when: `${w.jour} · ${s.ref.marche_heures[0]} h – ${s.ref.marche_heures[1]} h`,
+      title: wet ? "Marché sous la pluie" : "Beau temps pour le marché",
+      text: wet ? "Moins de clients quand il pleut : baissez un peu vos prix, ou vendez en gros." : "Les clients seront nombreux : remplissez votre étal avec des produits frais.",
+      btn: { label: "Mon étal", act: { type: "goto", view: "marche" } } });
+  }
+  const windy = week.slice(0, 3).findIndex((w) => s.ref.meteo[w.type].vent >= .7);
+  if (windy >= 0) {
+    const gain = s.ref.batiments.eolienne.gain_max * s.ref.meteo[week[windy].type].vent;
+    out.push(s.eoliennes
+      ? { ic: "wind", when: week[windy].jour, title: "Journée venteuse", text: `Vos éoliennes rapporteront environ ${eur(gain * s.eoliennes)} ce jour-là.` }
+      : { ic: "wind", when: week[windy].jour, title: "Du vent en vue", text: `Une éolienne rapporterait près de ${eur(gain)} ce jour-là. La coopérative en vend.`,
+        btn: { label: "Voir la coopérative", act: { type: "goto", view: "marche" } } });
+  }
+  if (s.reservoir.niveau / s.reservoir.capacite < .25 && rainSoon < 0) {
+    out.push({ cls: "bad", ic: "tank", when: "Réservoir", title: "Réservoir presque vide",
+      text: "Pas de pluie dans les trois jours : arrosez seulement les parcelles qui en ont vraiment besoin." });
+  }
+  if (!out.length) out.push({ ic: "sparkle", when: "Cette semaine", title: "Rien à signaler", text: "Les prévisions sont calmes : c'est le bon moment pour semer." });
+  return out.slice(0, 4);
 }
 
 // ---------------------------------------------------------------- élevage
@@ -654,6 +828,10 @@ function stallPanel(s, d, id) {
     rows += shopRow(d.serre_debloquee ? "greenhouse" : "lock", `Serre · ${d.n_serres} / ${FarmMap.FIELDS.length}`,
       d.serre_debloquee ? `${eur(se.prix)} · à construire sur une parcelle libre` : `après ${nf0.format(se.ventes_requises)} € de ventes (${eur(s.stats.ventes)})`,
       d.serre_debloquee ? `<button class="btn ghost sm" ${A({ type: "goto", view: "ferme" })}>Ma ferme</button>` : `<span class="pill-tag grey">Verrouillée</span>`);
+    const t = d.terrain_a_vendre;
+    rows += shopRow("plus", `Terrain · ${Object.keys(s.champs).length} / ${s.ref.terrains_max} parcelles`,
+      t ? `${t.nom} · ${s.ref.terrain_entretien} €/jour d'entretien` : "Tous les terrains sont achetés",
+      t ? `<button class="btn sm" ${A({ type: "acheter_parcelle" })} ${s.argent < t.prix ? "disabled" : ""}>${eur(t.prix)}</button>` : done);
     rows += Object.entries(s.ref.ameliorations).map(([k, u]) => shopRow(upIcons[k], u.nom, u.desc,
       s.ameliorations.includes(k) ? done : `<button class="btn sm" ${A({ type: "ameliorer", amelioration: k })} ${s.argent < u.prix ? "disabled" : ""}>${eur(u.prix)}</button>`)).join("");
     const pitch = !s.ruches ? "Des ruches ? Vos fraises vous diront merci, et le miel se vend bien !"
@@ -672,7 +850,7 @@ function stallPanel(s, d, id) {
     return card(`${head(`Tenue par ${st.vendeur} · ouvert tous les jours`)}${quote("Des œufs frais pour mes brioches et du miel pour mes pains d'épices, je prends !")}${sellRow(s, "oeufs")}${sellRow(s, "miel")}`);
   }
   if (id === "fleuriste") {
-    const fc = s.previsions.map((p, i) => `<div class="fc">${["Demain", "J+2", "J+3"][i]}${icon(WEATHER_ICON[p.type])}${p.temp}°</div>`).join("");
+    const fc = s.previsions.slice(0, 3).map((p, i) => `<div class="fc">${["Demain", "J+2", "J+3"][i]}${icon(WEATHER_ICON[p.type])}${p.temp}°</div>`).join("");
     return card(`${head(`Tenue par ${st.vendeur} · les jours de marché`, closedTag)}${quote(absent ? "Je reviens au prochain marché avec mes bouquets !" : "Mes fleurs sentent la météo mieux que la radio. Et votre fumier ferait du bien à mes massifs !")}
       <div class="forecast stall-fc">${fc}</div>${sellRow(s, "fumier")}`);
   }
@@ -743,7 +921,12 @@ function renderMarket(s, d) {
   const ru = s.ref.batiments.ruche;
   const ruBtn = s.ruches >= ru.max ? `<span class="pill-tag">${icon("check")} ${ru.max} / ${ru.max} installées</span>`
     : `<button class="btn" ${A({ type: "construire", batiment: "ruche" })} ${s.argent < ru.prix ? "disabled" : ""}>Acheter · ${eur(ru.prix)}</button>`;
-  setHTML($("#buildings"), `<div class="upg ${s.ruches ? "owned" : ""}"><div class="zone-ico">${icon("bee")}</div><h4>Ruche <span class="muted small">${s.ruches} / ${ru.max}</span></h4>
+  const tv = d.terrain_a_vendre, nParc = Object.keys(s.champs).length;
+  const terrain = `<div class="upg ${nParc > 3 ? "owned" : ""}"><div class="zone-ico" style="background:var(--green-soft);color:var(--green)">${icon("plus")}</div>
+      <h4>Nouvelle parcelle <span class="muted small">${nParc} / ${s.ref.terrains_max}</span></h4>
+      <p>Agrandissez la ferme : un terrain de 1 ha à semer comme vous voulez. Entretien ${s.ref.terrain_entretien} €/jour.</p>
+      ${tv ? `<button class="btn" ${A({ type: "acheter_parcelle" })} ${s.argent < tv.prix ? "disabled" : ""}>${tv.nom} · ${eur(tv.prix)}</button>` : `<span class="pill-tag">${icon("check")} Tout est acheté</span>`}</div>`;
+  setHTML($("#buildings"), `${terrain}<div class="upg ${s.ruches ? "owned" : ""}"><div class="zone-ico">${icon("bee")}</div><h4>Ruche <span class="muted small">${s.ruches} / ${ru.max}</span></h4>
       <p>${ru.desc} ${s.ruches ? `Aujourd'hui : ${nf1.format(d.miel_jour)} kg de miel.` : ""}</p>${ruBtn}</div>
     <div class="upg ${s.eoliennes ? "owned" : ""}"><div class="zone-ico">${icon("wind")}</div><h4>Éolienne <span class="muted small">${s.eoliennes} / ${eo.max}</span></h4>
       <p>${eo.desc} Aujourd'hui : ${eur(eo.gain_max * d.vent)} / jour chacune.</p>${eoBtn}</div>
@@ -776,12 +959,15 @@ function renderModal(s) {
 }
 
 // ---------------------------------------------------------------- démarrage
+ICONS.moon = '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>';
 ICONS.clock = '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>';
 hydrateIcons();
 $("#hero-art").innerHTML = ART.hero();
 $("#title-art").innerHTML = ART.hero("t-");
 $("#avatar").innerHTML = ART.avatar;
 FarmMap.init($("#map"), selectZone);
+WeatherScene.init($("#wx-scene"));
+$("#weather-card").addEventListener("click", () => go("meteo"));
 MarketMap.init($("#market-map"), selectStall);
 act({ type: "menu", ouvert: true });   // on arrive toujours sur le menu principal
 poll();
