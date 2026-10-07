@@ -13,7 +13,7 @@ from copy import deepcopy
 MIN_PER_DAY = 1440
 MEALS = [6, 12, 18]           # heures des repas
 MEAL_WINDOW = (-1, 3)         # fenêtre : 1 h avant → 3 h après
-GAME_MIN_PER_SEC = 10         # vitesse x1 : 1 s réelle = 10 min de jeu
+GAME_MIN_PER_SEC = 1          # vitesse x1 : 1 s réelle = 1 min de jeu
 TARGET_MONEY = 15000
 
 JOURS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]

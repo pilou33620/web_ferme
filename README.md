@@ -41,7 +41,7 @@ Atteindre **15 000 €** de trésorerie sans faire faillite. Si le compte reste 
 
 **Mode libre** : à la création d'une partie, on choisit entre la partie classique et le mode libre (pas d'objectif d'argent, seule la faillite reste possible). Après une victoire, « Continuer en mode libre » garde la ferme et continue sans fin.
 
-- **Temps** : à la vitesse ×1, une seconde réelle vaut 10 minutes de jeu (une journée dure environ 2 min 24 s). Le jeu propose une pause et les vitesses ×1 à ×8.
+- **Temps** : à la vitesse ×1, une seconde réelle vaut 1 minute de jeu (une journée dure 24 min, 3 min en ×8). Le jeu propose une pause et les vitesses ×1 à ×8.
 - **Saisons** : l'année compte quatre saisons de 7 jours (printemps, été, automne, hiver), affichées dans la barre latérale.
   - Chaque culture a ses saisons de semis en plein champ (tomates, fraises, maïs, pommes de terre : printemps et été ; potirons jusqu'à l'automne ; carottes et salades presque toute l'année). Sous serre, tout se sème toute l'année.
   - La pousse est plus rapide l'été (+10 %), plus lente l'automne (−15 %) et l'hiver (−40 %, −10 % sous serre).
