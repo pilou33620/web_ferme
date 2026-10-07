@@ -16,7 +16,7 @@ class EngineTest(unittest.TestCase):
         v = self.g.view()
         self.assertEqual(v["derive"]["jour"], 1)
         self.assertEqual(v["derive"]["heure"], "05:00")
-        self.assertEqual(v["derive"]["n_animaux"], 48)
+        self.assertEqual(v["derive"]["n_animaux"], 16)
 
     def test_time_and_new_day(self):
         self.g.advance(MIN_PER_DAY)

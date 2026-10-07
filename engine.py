@@ -108,6 +108,8 @@ ITEMS = {
 EMOJI = {"lait": "🥛", "oeufs": "🥚", "laine": "🧶", "miel": "🍯", "fumier": "💩"}
 GROS = 0.6                    # le négociant paie 60 % du cours du jour (avant qualité)
 
+SATIETE_BAISSE = 0.07         # satiété perdue par minute de jeu (un repas tient la nuit, de 18 h à 6 h)
+SANTE_BAISSE_FAIM = 0.015     # santé perdue par minute quand le troupeau a faim (satiété < 20)
 FEED_PRICE = 0.25             # €/kg de foin
 FEED_BIO_PRICE = 0.33         # €/kg de foin bio
 VET_PRICE = 25
@@ -242,7 +244,7 @@ class Game:
         seed = seed if seed is not None else random.randrange(1, 10**9)
         rng = random.Random(seed)
         animals = {}
-        for cat, n in (("vaches", 18), ("poules", 20), ("moutons", 6), ("cochons", 4)):
+        for cat, n in (("vaches", 4), ("poules", 8), ("moutons", 2), ("cochons", 2)):
             animals[cat] = {
                 "satiete": 80.0,
                 "liste": [{"id": f"{cat[:2]}{i}", "nom": NAMES[cat][i % len(NAMES[cat])],
@@ -679,16 +681,16 @@ class Game:
         prod = self.s["stats"]["production_jour"]
         for cat, grp in self.s["animaux"].items():
             info = ANIMALS[cat]
-            grp["satiete"] = clamp(grp["satiete"] - 0.13 * m)
+            grp["satiete"] = clamp(grp["satiete"] - SATIETE_BAISSE * m)
             sat = grp["satiete"]
             for a in grp["liste"]:
                 if sat < 20:
-                    a["sante"] = clamp(a["sante"] - 0.025 * m)
+                    a["sante"] = clamp(a["sante"] - SANTE_BAISSE_FAIM * m)
                 elif sat > 50:
                     a["sante"] = clamp(a["sante"] + 0.02 * m)
-            if sat > 30 and grp["liste"]:
+            if grp["liste"] and self.feed_factor(sat):
                 eff = sum(a["sante"] for a in grp["liste"]) / 100.0
-                qty = info["par_jour"] * eff * (m / MIN_PER_DAY) * (1.0 if sat > 55 else 0.6)
+                qty = info["par_jour"] * eff * (m / MIN_PER_DAY) * self.feed_factor(sat)
                 self._add(info["produit"], qty, self.animal_quality(cat), self.s["repas_bio"])
                 prod[info["produit"]] = prod.get(info["produit"], 0) + qty
             # décès
@@ -873,6 +875,11 @@ class Game:
         f = self.s["champs"][key]
         f["humidite"] = clamp(f["humidite"] + 45)
         return True
+
+    @staticmethod
+    def feed_factor(satiete: float) -> float:
+        """Part de la production assurée selon la satiété : pleine, réduite, ou rien du tout."""
+        return 1.0 if satiete > 55 else 0.6 if satiete > 30 else 0.0
 
     def feed_needed(self, cats=None) -> float:
         cats = cats or list(self.s["animaux"])
@@ -1288,7 +1295,7 @@ class Game:
         production = 0.0
         for cat, g in s["animaux"].items():
             if g["liste"]:
-                production += min(100, g["satiete"] * 1.4) * (sum(a["sante"] for a in g["liste"]) / len(g["liste"]) / 100)
+                production += 100 * self.feed_factor(g["satiete"]) * (sum(a["sante"] for a in g["liste"]) / len(g["liste"]) / 100)
         production /= max(1, sum(1 for g in s["animaux"].values() if g["liste"]))
         produits = {}
         for k in ITEMS:
