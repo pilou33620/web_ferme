@@ -110,6 +110,23 @@ GROS = 0.6                    # le négociant paie 60 % du cours du jour (avant 
 
 SATIETE_BAISSE = 0.07         # satiété perdue par minute de jeu (un repas tient la nuit, de 18 h à 6 h)
 SANTE_BAISSE_FAIM = 0.015     # santé perdue par minute quand le troupeau a faim (satiété < 20)
+
+# --- Soins aux animaux ---
+PRE_SATIETE = 0.4             # au pré, les bêtes broutent : elles ont faim 2,5 fois moins vite
+SALETE = 0.02                 # propreté de l'enclos perdue par minute (≈ 3 jours pour un enclos sale)
+ENCLOS_SALE = 35              # sous ce seuil de propreté, les bêtes tombent malades
+SANTE_BAISSE_SALE = 0.01      # santé perdue par minute dans un enclos sale
+HUMEUR_BAISSE = 0.012         # humeur perdue par minute sans attention (≈ −17 par jour)
+CALIN = 25                    # humeur gagnée par un câlin
+CALIN_PAUSE = 120             # minutes entre deux câlins au même animal
+RAMASSAGE_MAX = 1.0           # la production attend au plus une journée avant d'être perdue
+FUMIER_NETTOYAGE = {"vaches": 6.0, "poules": 0.15, "moutons": 2.0, "cochons": 4.0}   # kg par animal, enclos très sale
+SOINS = {   # verbes de l'interface, par espèce
+    "vaches":  {"ramasser": "Traire", "calin": "Brosser", "pre": "au pré", "enclos": "l'étable"},
+    "poules":  {"ramasser": "Ramasser les œufs", "calin": "Caresser", "pre": "dans la cour", "enclos": "le poulailler"},
+    "moutons": {"ramasser": "Tondre", "calin": "Gratouiller", "pre": "au pré", "enclos": "la bergerie"},
+    "cochons": {"ramasser": "Ramasser le fumier", "calin": "Gratter le dos", "pre": "au pré", "enclos": "la porcherie"},
+}
 FEED_PRICE = 0.25             # €/kg de foin
 FEED_BIO_PRICE = 0.33         # €/kg de foin bio
 VET_PRICE = 25
@@ -125,7 +142,7 @@ UPGRADES = {
     "cloture":   {"nom": "Clôture renforcée", "prix": 400,
                    "desc": "Protège le poulailler du renard."},
     "tracteur":  {"nom": "Tracteur", "prix": 2200,
-                   "desc": "+20 % de rendement à chaque récolte."},
+                   "desc": "+20 % de rendement à chaque récolte, et il laboure toute une parcelle d'un coup."},
 }
 
 # Technologies modernes : chères, avec un coût d'entretien journalier, mais elles travaillent pour vous.
@@ -135,16 +152,29 @@ TECH = {
                            "de santé et de qualité. Il reste au sol les jours d'orage."},
     "desherbeur": {"nom": "Robot désherbeur", "prix": 8000, "entretien": 12, "emoji": "🤖",
                    "desc": "Arrache les mauvaises herbes entre les rangs, sans aucun produit : "
-                           "les cultures poussent 15 % plus vite et restent bio."},
+                           "plus besoin de désherber, et les cultures poussent 15 % plus vite."},
     "semoir":     {"nom": "Semoir autonome", "prix": 9000, "entretien": 12, "emoji": "🌱",
-                   "desc": "Ressème tout seul la même culture dès qu'une planche est récoltée "
+                   "desc": "Prépare le sol et ressème tout seul la même culture dès qu'une planche est récoltée "
                            "(les graines sont payées automatiquement)."},
     "recolteur":  {"nom": "Robot de récolte", "prix": 12000, "entretien": 18, "emoji": "🦾",
                    "desc": "Récolte chaque planche dès qu'elle est mûre, jour et nuit : "
                            "plus rien ne pourrit sur pied, et la qualité est au maximum."},
+    "robot_traite": {"nom": "Robot de traite", "prix": 6000, "entretien": 10, "emoji": "🥛",
+                   "desc": "Trait les vaches et ramasse œufs, laine et fumier tout seul, à toute heure : "
+                           "la production va directement au stock."},
 }
 DRONE_PROTECT = 0.5           # pertes de santé et de qualité avec le drone
 DESHERBEUR_BOOST = 1.15
+
+# --- Soins aux cultures ---
+HERBES_POUSSE = 0.03          # mauvaises herbes gagnées par minute (≈ 2,5 jours pour envahir une planche)
+NUISIBLE_RISQUE = 0.22        # chance par jour qu'une planche cultivée soit attaquée
+NUISIBLE_DEGATS = 0.03        # santé perdue par minute tant que les nuisibles sont là
+NUISIBLES = {"tomates": "pucerons", "carottes": "mouches de la carotte", "salades": "limaces",
+             "pommes_de_terre": "doryphores", "mais": "pyrales", "fraises": "limaces", "potirons": "pucerons",
+             "melons": "pucerons", "poivrons": "pucerons"}
+TRAITEMENT = {"naturel": {"nom": "Purin d'ortie", "prix": 10, "protege": 0},
+              "chimique": {"nom": "Insecticide", "prix": 30, "protege": 3 * MIN_PER_DAY}}
 
 # Constructions : à acheter en cours de partie, rien n'est fourni au départ.
 BUILDINGS = {
@@ -244,14 +274,8 @@ class Game:
         seed = seed if seed is not None else random.randrange(1, 10**9)
         rng = random.Random(seed)
         animals = {}
-        for cat, n in (("vaches", 4), ("poules", 8), ("moutons", 2), ("cochons", 2)):
-            animals[cat] = {
-                "satiete": 80.0,
-                "liste": [{"id": f"{cat[:2]}{i}", "nom": NAMES[cat][i % len(NAMES[cat])],
-                           "sante": float(rng.randint(82, 100))} for i in range(n)],
-                "prochain_id": n,
-            }
-        fields = {k: Game.empty_field(hum) for k, hum in zip(FIELDS, (72.0, 64.0, 70.0))}
+        animals = {cat: Game.empty_herd() for cat in ANIMALS}   # le fermier démarre sans aucune bête
+        fields = {k: Game.empty_field(hum, pret=False) for k, hum in zip(FIELDS, (72.0, 64.0, 70.0))}
         st = {
             "version": 4,
             "seed": seed,
@@ -292,20 +316,32 @@ class Game:
         }
         g = Game(st)
         g._roll_forecast(initial=True)
-        g.log("Bienvenue à la Ferme du Val Vert ! Les parcelles sont libres : choisissez quoi y semer. "
-              "Premier marché demain mardi, 7 h.", "info")
+        g.log("Bienvenue à la Ferme du Val Vert ! Les parcelles sont en friche : préparez le sol, puis semez. "
+              "L'élevage est vide : achetez vos premières bêtes quand vous serez prêt. Premier marché demain mardi, 7 h.", "info")
         return st
 
     @staticmethod
-    def empty_bed() -> dict:
-        """Une planche : ce qui y pousse et dans quel état."""
+    def empty_bed(pret: bool = True) -> dict:
+        """Une planche : ce qui y pousse et dans quel état. `sol_pret` : labourée, prête à semer."""
         return {"etat": "vide", "culture": None, "croissance": 0.0, "sante": 100.0, "qualite": 100.0,
-                "chimique": False, "engrais_jusqua": 0, "boost": 1.0, "mur_depuis": None}
+                "chimique": False, "engrais_jusqua": 0, "boost": 1.0, "mur_depuis": None,
+                "sol_pret": pret, "herbes": 0.0, "nuisible": None, "protege_jusqua": 0}
 
     @staticmethod
-    def empty_field(humidite: float = 65.0, beds: int = 1) -> dict:
+    def empty_field(humidite: float = 65.0, beds: int = 1, pret: bool = True) -> dict:
         """Une parcelle : le sol (humidité, serre) est commun, les cultures sont par planche."""
-        return {"serre": False, "humidite": humidite, "planches": [Game.empty_bed() for _ in range(beds)]}
+        return {"serre": False, "humidite": humidite, "planches": [Game.empty_bed(pret) for _ in range(beds)]}
+
+    @staticmethod
+    def empty_herd() -> dict:
+        """Un enclos : satiété commune, propreté de la litière, production qui attend d'être ramassée."""
+        return {"satiete": 80.0, "liste": [], "prochain_id": 0, "proprete": 100.0, "au_pre": False,
+                "a_ramasser": 0.0, "q_ramasser": 80.0, "bio_ramasser": 0.0}
+
+    @staticmethod
+    def new_animal(cat: str, i: int, sante: float = 100.0) -> dict:
+        return {"id": f"{cat[:2]}{i}", "nom": NAMES[cat][i % len(NAMES[cat])], "sante": sante,
+                "humeur": 70.0, "dernier_calin": -CALIN_PAUSE}
 
     @staticmethod
     def default_stall() -> dict:
@@ -357,6 +393,12 @@ class Game:
             for b in f["planches"]:
                 for k, v in self.empty_bed().items():
                     b.setdefault(k, v)
+        for grp in s["animaux"].values():
+            for k, v in self.empty_herd().items():
+                grp.setdefault(k, v)
+            for a in grp["liste"]:
+                a.setdefault("humeur", 70.0)
+                a.setdefault("dernier_calin", -CALIN_PAUSE)
         if s.get("meteo"):   # anciennes sauvegardes : 3 jours de prévisions seulement
             rng = random.Random(f"{s['seed']}-{s['minute']:.0f}-meteo-ext")
             while len(s["previsions"]) < FORECAST_DAYS:
@@ -554,7 +596,20 @@ class Game:
         if not g["liste"]:
             return 0.0
         health = sum(a["sante"] for a in g["liste"]) / len(g["liste"])
-        return clamp(0.55 * health + 0.45 * min(100, g["satiete"] * 1.25))
+        return clamp(0.45 * health + 0.35 * min(100, g["satiete"] * 1.25) + 0.2 * self.mood(cat))
+
+    def mood(self, cat: str) -> float:
+        """Humeur moyenne d'un enclos (0 à 100)."""
+        g = self.s["animaux"][cat]
+        return sum(a["humeur"] for a in g["liste"]) / len(g["liste"]) if g["liste"] else 0.0
+
+    @staticmethod
+    def mood_factor(humeur: float) -> float:
+        """Des bêtes heureuses produisent plus ; des bêtes délaissées, moins."""
+        return 1.1 if humeur >= 70 else 1.0 if humeur >= 40 else 0.85
+
+    def night(self) -> bool:
+        return self.hour < 6 or self.hour >= 21
 
     def pollination(self) -> float:
         return 1 + 0.05 * min(3, self.s["ruches"])
@@ -619,7 +674,9 @@ class Game:
 
         # cultures : le sol (humidité) est commun à la parcelle, chaque planche pousse à son rythme
         protect = DRONE_PROTECT if self.drone_active() else 1.0
-        weed = DESHERBEUR_BOOST if self.has_tech("desherbeur") else 1.0
+        robot_herbes = self.has_tech("desherbeur")
+        weed = DESHERBEUR_BOOST if robot_herbes else 1.0
+        pest_rng = random.Random(f"{self.s['seed']}-nuisibles-{self.s['minute']:.0f}")
         for key, f in self.s["champs"].items():
             serre = f["serre"]
             active = [b for b in f["planches"] if b["etat"] in ("seme", "pousse", "mur")]
@@ -634,13 +691,31 @@ class Game:
                 if b["etat"] not in ("seme", "pousse", "mur"):
                     continue
                 crop = CROPS[b["culture"]]
+                # mauvaises herbes : elles aiment les sols humides ; le robot désherbeur les arrache au fur et à mesure
+                if robot_herbes:
+                    b["herbes"] = 0.0
+                else:
+                    b["herbes"] = clamp(b["herbes"] + HERBES_POUSSE * (1.3 if hum > 60 else 1.0) * (0.6 if serre else 1.0) * m)
+                # nuisibles : ils arrivent au hasard (moins sous serre) et rongent les plants tant qu'on ne traite pas
+                if b["nuisible"] is None and b["protege_jusqua"] <= self.s["minute"] \
+                        and pest_rng.random() < NUISIBLE_RISQUE * (0.4 if serre else 1.0) * m / MIN_PER_DAY:
+                    b["nuisible"] = NUISIBLES[b["culture"]]
+                    self.log(f"{self.bed_name(key, i)} : des {b['nuisible']} attaquent les {crop['nom'].lower()} ! Traitez vite.", "alerte")
+                if b["nuisible"]:
+                    b["sante"] = clamp(b["sante"] - NUISIBLE_DEGATS * m * protect)
+                    b["qualite"] = clamp(b["qualite"] - 0.01 * m * protect)
+                    if b["sante"] <= 0:
+                        b["etat"] = "fletri"
+                        self.log(f"{self.bed_name(key, i)} : les {b['nuisible']} ont eu raison des {crop['nom'].lower()}.", "alerte")
+                        continue
                 if b["etat"] in ("seme", "pousse"):
                     water_factor = 0.15 if hum < 15 else (0.6 if hum < 35 else (1.0 if hum <= 90 else 0.7))
                     hot = temp > 34 and not serre
                     heat = 0.6 if hot else 1.0
                     boost = b["boost"] if b["engrais_jusqua"] > self.s["minute"] else 1.0
                     rate = 100.0 / (crop["jours"] * MIN_PER_DAY) * (SERRE_BOOST if serre else 1.0) * weed
-                    b["croissance"] = min(100.0, b["croissance"] + rate * water_factor * heat * boost * m)
+                    herbes = 1 - 0.5 * b["herbes"] / 100      # envahie, une planche pousse deux fois moins vite
+                    b["croissance"] = min(100.0, b["croissance"] + rate * water_factor * heat * boost * herbes * m)
                     if b["croissance"] > 8:
                         b["etat"] = "pousse"
                     if hum < 15:
@@ -654,6 +729,8 @@ class Game:
                         b["qualite"] = clamp(b["qualite"] - 0.01 * m * protect)
                     if hot:
                         b["qualite"] = clamp(b["qualite"] - 0.01 * m * protect)
+                    if b["herbes"] > 60:
+                        b["qualite"] = clamp(b["qualite"] - 0.008 * m)
                     if b["croissance"] >= 100:
                         b["etat"] = "mur"
                         b["mur_depuis"] = self.s["minute"]
@@ -679,19 +756,43 @@ class Game:
 
         # animaux
         prod = self.s["stats"]["production_jour"]
+        mauvais_temps = self.s["meteo"]["type"] in ("pluie", "orage")
+        robot_traite = self.has_tech("robot_traite")
         for cat, grp in self.s["animaux"].items():
             info = ANIMALS[cat]
-            grp["satiete"] = clamp(grp["satiete"] - SATIETE_BAISSE * m)
-            sat = grp["satiete"]
+            if not grp["liste"]:
+                continue
+            dehors = grp["au_pre"]
+            broute = dehors and not self.night() and self.s["meteo"]["type"] != "orage"
+            grp["satiete"] = clamp(grp["satiete"] - SATIETE_BAISSE * (PRE_SATIETE if broute else 1.0) * m)
+            grp["proprete"] = clamp(grp["proprete"] - SALETE * (0.4 if dehors else 1.0) * m)
+            sat, sale = grp["satiete"], grp["proprete"] < ENCLOS_SALE
+            # humeur : elle baisse sans attention ; le pré la remonte, la pluie dehors ou la nuit dehors la plombent
+            humeur = -HUMEUR_BAISSE - (0.01 if sale else 0)
+            if dehors:
+                humeur += -0.03 if (mauvais_temps or self.night()) else 0.025
             for a in grp["liste"]:
                 if sat < 20:
                     a["sante"] = clamp(a["sante"] - SANTE_BAISSE_FAIM * m)
-                elif sat > 50:
+                elif sat > 50 and not sale:
                     a["sante"] = clamp(a["sante"] + 0.02 * m)
-            if grp["liste"] and self.feed_factor(sat):
+                if sale:
+                    a["sante"] = clamp(a["sante"] - SANTE_BAISSE_SALE * m)
+                a["humeur"] = clamp(a["humeur"] + humeur * m)
+            if self.feed_factor(sat):
                 eff = sum(a["sante"] for a in grp["liste"]) / 100.0
-                qty = info["par_jour"] * eff * (m / MIN_PER_DAY) * self.feed_factor(sat)
-                self._add(info["produit"], qty, self.animal_quality(cat), self.s["repas_bio"])
+                qty = info["par_jour"] * eff * (m / MIN_PER_DAY) * self.feed_factor(sat) * self.mood_factor(self.mood(cat))
+                q, bio = self.animal_quality(cat), self.s["repas_bio"]
+                if robot_traite:
+                    self._add(info["produit"], qty, q, bio)
+                else:   # la production attend dans l'enclos qu'on vienne la chercher (au plus une journée)
+                    room = info["par_jour"] * len(grp["liste"]) * RAMASSAGE_MAX - grp["a_ramasser"]
+                    qty = max(0.0, min(qty, room))
+                    if qty:
+                        tot = grp["a_ramasser"] + qty
+                        grp["q_ramasser"] = (grp["q_ramasser"] * grp["a_ramasser"] + q * qty) / tot
+                        grp["bio_ramasser"] = (grp["bio_ramasser"] * grp["a_ramasser"] + bio * qty) / tot
+                        grp["a_ramasser"] = tot
                 prod[info["produit"]] = prod.get(info["produit"], 0) + qty
             # décès
             dead = [a for a in grp["liste"] if a["sante"] <= 0]
@@ -835,6 +936,13 @@ class Game:
                         b["sante"] = clamp(b["sante"] - 25)
                         b["qualite"] = clamp(b["qualite"] - 15)
                     self.log(f"L'orage a abîmé la {self.field_name(key)} (−25 % de santé, qualité en baisse).", "alerte")
+        poules = self.s["animaux"]["poules"]
+        if poules["au_pre"] and poules["liste"] and rng.random() < 0.45:
+            lost = poules["liste"].pop(rng.randrange(len(poules["liste"])))
+            self.log(f"Les poules sont restées dehors cette nuit : le renard a emporté {lost['nom']}. Rentrez-les le soir !", "alerte")
+        dehors = [ANIMALS[c]["nom"].lower() for c, g in self.s["animaux"].items() if g["au_pre"] and g["liste"] and c != "poules"]
+        if dehors:
+            self.log(f"Les {' et les '.join(dehors)} ont passé la nuit dehors : ils sont de mauvaise humeur.", "alerte")
         roll = rng.random()
         if roll < 0.10 and not self.has("cloture") and self.s["animaux"]["poules"]["liste"]:
             lost = self.s["animaux"]["poules"]["liste"].pop(rng.randrange(len(self.s["animaux"]["poules"]["liste"])))
@@ -947,12 +1055,14 @@ class Game:
             raise ActionError(f"Les {crop['nom'].lower()} ne poussent que sous serre.")
         self._pay(crop["graines"])
         f["planches"][i].update(etat="seme", culture=c, croissance=0.0, sante=100.0, qualite=100.0, chimique=False,
-                                engrais_jusqua=0, boost=1.0, mur_depuis=None)
+                                engrais_jusqua=0, boost=1.0, mur_depuis=None, sol_pret=False, herbes=0.0, nuisible=None)
 
     def _a_semer(self, a):
         key, f, i, b = self._bed(a)
         if b["etat"] not in ("vide", "fletri"):
             raise ActionError("La planche n'est pas libre.")
+        if b["etat"] == "fletri" or not b["sol_pret"]:
+            raise ActionError("Préparez d'abord le sol de cette planche.")
         c = a.get("culture")
         if c not in CROPS:
             raise ActionError("Choisissez ce que vous voulez semer.")
@@ -974,8 +1084,49 @@ class Game:
             raise ActionError(f"Une parcelle se divise en 1 à {MAX_BEDS} planches.")
         if any(b["etat"] not in ("vide", "fletri") for b in f["planches"]):
             raise ActionError("Récoltez d'abord : toutes les planches doivent être libres pour redécouper la parcelle.")
-        f["planches"] = [self.empty_bed() for _ in range(n)]
+        pret = all(b["etat"] == "vide" and b["sol_pret"] for b in f["planches"])
+        f["planches"] = [self.empty_bed(pret) for _ in range(n)]
         return f"{self.field_name(key)} : {n} planche{'s' if n > 1 else ''}."
+
+    def _a_preparer(self, a):
+        """Laboure une planche libre (ou arrache les plants flétris) : elle est prête à semer.
+        Avec le tracteur, toute la parcelle est labourée d'un coup."""
+        key, f, i, b = self._bed(a)
+        todo = [x for x in (f["planches"] if self.has("tracteur") else [b])
+                if x["etat"] == "fletri" or (x["etat"] == "vide" and not x["sol_pret"])]
+        if not todo:
+            raise ActionError("Le sol est déjà prêt." if b["etat"] == "vide" else "La planche est occupée.")
+        for x in todo:
+            x.update(self.empty_bed(pret=True))
+        if self.has("tracteur") and len(f["planches"]) > 1:
+            return f"Le tracteur a labouré {self.field_name(key)} : {len(todo)} planche(s) prête(s) à semer."
+        return f"{self.bed_name(key, i)} : sol labouré, prêt à semer."
+
+    def _a_desherber(self, a):
+        key, f, i, b = self._bed(a)
+        if b["etat"] not in ("seme", "pousse", "mur") or b["herbes"] < 1:
+            raise ActionError("Pas de mauvaises herbes ici.")
+        b["herbes"] = 0.0
+        return f"{self.bed_name(key, i)} désherbée : les plants respirent !"
+
+    def _a_traiter(self, a):
+        """Traite une planche contre les nuisibles : au naturel (reste bio) ou à l'insecticide (protège 3 jours)."""
+        key, f, i, b = self._bed(a)
+        mode = a.get("traitement", "naturel")
+        if mode not in TRAITEMENT:
+            raise ActionError("Traitement inconnu.")
+        if not b["nuisible"]:
+            raise ActionError("Aucun nuisible sur cette planche.")
+        t = TRAITEMENT[mode]
+        self._pay(t["prix"])
+        pest, b["nuisible"] = b["nuisible"], None
+        if mode == "chimique":
+            b.update(chimique=True, protege_jusqua=self.s["minute"] + t["protege"])
+            self.s["dernier_chimique"] = self.s["minute"]
+            self.log(f"{self.bed_name(key, i)} : insecticide contre les {pest} (−{t['prix']} €). La récolte ne sera pas bio.", "info")
+            return f"Plus de {pest} · planche protégée 3 jours, mais plus bio."
+        self.log(f"{self.bed_name(key, i)} : {t['nom'].lower()} contre les {pest} (−{t['prix']} €).", "info")
+        return f"Plus de {pest} · traitement naturel, la culture reste bio."
 
     def _a_arroser(self, a):
         key, f = self._field(a)
@@ -1017,12 +1168,13 @@ class Game:
         self.s["stats"]["recolte_kg"] += qty
         self.s["stats"]["recoltes"] += 1
         bio = "" if b["chimique"] else ", bio"
-        b.update(etat="vide", culture=None, croissance=0.0, mur_depuis=None, engrais_jusqua=0, chimique=False)
+        b.update(self.empty_bed(pret=False))
         who = "Le robot a récolté" if robot else "Récolte :"
         msg = f"{qty} kg de {CROPS[c]['nom'].lower()} (qualité {quality_label(q).lower()}{bio})"
         replant = ""
-        if self.has_tech("semoir"):   # le semoir autonome ressème la même culture
+        if self.has_tech("semoir"):   # le semoir autonome prépare le sol et ressème la même culture
             try:
+                b["sol_pret"] = True
                 self._sow(key, i, c)
                 replant = f" Le semoir a ressemé (−{CROPS[c]['graines']} €)."
             except ActionError:
@@ -1045,6 +1197,8 @@ class Game:
             * (ASSOCIATION if self.mixed(key) else 1.0)
 
     def _a_nourrir(self, a):
+        if not self.n_animals():
+            raise ActionError("Vous n'avez pas encore d'animaux : achetez vos premières bêtes dans l'élevage.")
         self._feed()
         rp = self.s["repas"]
         h = self.hour
@@ -1052,6 +1206,91 @@ class Game:
         if slot is not None and slot not in rp["faits"]:
             rp["faits"].append(slot)
         return "Les animaux ont mangé" + (" (repas bio)." if self.s["repas_bio"] >= 0.99 else ".")
+
+    def _herds(self, a) -> list[str]:
+        """Les enclos visés par une action : une catégorie, ou tous ceux qui ont des bêtes."""
+        cat = a.get("categorie")
+        if cat is None:
+            cats = [c for c, g in self.s["animaux"].items() if g["liste"]]
+            if not cats:
+                raise ActionError("Vous n'avez pas encore d'animaux.")
+            return cats
+        if cat not in ANIMALS:
+            raise ActionError("Catégorie inconnue.")
+        if not self.s["animaux"][cat]["liste"]:
+            raise ActionError(f"Vous n'avez pas de {ANIMALS[cat]['nom'].lower()}.")
+        return [cat]
+
+    def _a_ramasser(self, a):
+        """Traire, ramasser les œufs, tondre… : ce qui attend dans l'enclos passe au stock."""
+        done = []
+        for cat in self._herds(a):
+            g, info = self.s["animaux"][cat], ANIMALS[cat]
+            qty = g["a_ramasser"]
+            if info["produit"] == "oeufs":
+                qty = math.floor(qty)
+            if qty <= 0 or (info["produit"] != "oeufs" and qty < 0.05):
+                continue
+            self._add(info["produit"], qty, g["q_ramasser"], g["bio_ramasser"])
+            g["a_ramasser"] -= qty
+            unite = ITEMS[info["produit"]]["unite"]
+            done.append(f"{qty:.0f} {unite} de {ITEMS[info['produit']]['nom'].lower()}" if qty >= 10 or unite == "u"
+                        else f"{qty:.1f} {unite} de {ITEMS[info['produit']]['nom'].lower()}".replace(".", ","))
+        if not done:
+            raise ActionError("Rien à ramasser pour l'instant : repassez un peu plus tard.")
+        return "Ramassé : " + ", ".join(done) + "."
+
+    def _a_nettoyer(self, a):
+        """Change la litière : l'enclos redevient propre, et le fumier part au tas."""
+        fumier, noms = 0.0, []
+        for cat in self._herds(a):
+            g = self.s["animaux"][cat]
+            if g["proprete"] > 95:
+                continue
+            fumier += FUMIER_NETTOYAGE[cat] * len(g["liste"]) * (100 - g["proprete"]) / 100
+            g["proprete"] = 100.0
+            noms.append(SOINS[cat]["enclos"])
+        if not noms:
+            raise ActionError("C'est déjà tout propre.")
+        self._add("fumier", fumier, 70, 1.0)
+        return f"{', '.join(noms).capitalize()} : litière changée · +{fumier:.0f} kg de fumier."
+
+    def _a_caliner(self, a):
+        """Un câlin, un coup de brosse : l'animal (ou tout l'enclos) retrouve le moral."""
+        cat = a.get("categorie")
+        if cat not in ANIMALS:
+            raise ActionError("Catégorie inconnue.")
+        g, now = self.s["animaux"][cat], self.s["minute"]
+        targets = [x for x in g["liste"] if not a.get("id") or x["id"] == a["id"]]
+        if not targets:
+            raise ActionError("Animal introuvable." if a.get("id") else f"Vous n'avez pas de {ANIMALS[cat]['nom'].lower()}.")
+        ready = [x for x in targets if now - x["dernier_calin"] >= CALIN_PAUSE]
+        if not ready:
+            raise ActionError(f"{targets[0]['nom']} a eu sa dose de câlins, repassez dans un moment."
+                              if len(targets) == 1 else "Ils ont tous eu leur dose de câlins, repassez dans un moment.")
+        for x in ready:
+            x["humeur"] = clamp(x["humeur"] + CALIN)
+            x["dernier_calin"] = now
+        cri = {"vaches": "meugle de plaisir 🐮", "poules": "glousse de joie 🐔", "moutons": "bêle tout content 🐑",
+               "cochons": "grogne de bonheur 🐷"}[cat]
+        if len(ready) == 1:
+            return f"{ready[0]['nom']} {cri}"
+        return f"{len(ready)} {ANIMALS[cat]['nom'].lower()} câlinés : tout le monde est ravi !"
+
+    def _a_sortir(self, a):
+        """Sort le troupeau au pré (ou les poules dans la cour), ou le rentre."""
+        dehors = bool(a.get("dehors"))
+        cats = [c for c in self._herds(a) if self.s["animaux"][c]["au_pre"] != dehors]
+        if not cats:
+            raise ActionError("Ils sont déjà dehors." if dehors else "Ils sont déjà rentrés.")
+        if dehors and self.s["meteo"]["type"] == "orage":
+            raise ActionError("Il y a de l'orage : mieux vaut les garder à l'abri.")
+        for c in cats:
+            self.s["animaux"][c]["au_pre"] = dehors
+        noms = " et ".join(ANIMALS[c]["nom"].lower() for c in cats)
+        if dehors:
+            return f"Les {noms} sont sortis : ils broutent et prennent l'air. Pensez à les rentrer le soir !"
+        return f"Les {noms} sont rentrés pour la nuit."
 
     def _a_soigner(self, a):
         sick = [x for g in self.s["animaux"].values() for x in g["liste"] if x["sante"] < 50]
@@ -1123,7 +1362,7 @@ class Game:
             for _ in range(qty):
                 i = grp["prochain_id"]
                 grp["prochain_id"] += 1
-                grp["liste"].append({"id": f"{item[:2]}{i}", "nom": NAMES[item][i % len(NAMES[item])], "sante": 100.0})
+                grp["liste"].append(self.new_animal(item, i))
             self.log(f"Achat de {qty} {info['unite']}(s).", "info")
             return f"+{qty} {info['unite']}(s)."
         raise ActionError("Article inconnu.")
@@ -1187,7 +1426,7 @@ class Game:
                 raise ActionError("Récoltez d'abord : la parcelle doit être libre pour construire.")
             self._pay(info["prix"])
             f["serre"] = True
-            f["planches"] = [self.empty_bed() for _ in f["planches"]]
+            f["planches"] = [self.empty_bed(pret=True) for _ in f["planches"]]
             self.log(f"{self.field_name(key)} construite ! Melons et poivrons y poussent.", "succes")
             return f"{self.field_name(key)} construite."
         raise ActionError("Construction inconnue.")
@@ -1199,7 +1438,7 @@ class Game:
             raise ActionError("Il n'y a plus de terrain à vendre autour de la ferme.")
         key, prix = nxt
         self._pay(prix)
-        self.s["champs"][key] = self.empty_field(60.0)
+        self.s["champs"][key] = self.empty_field(60.0, pret=False)
         prix_txt = f"{prix:,}".replace(",", " ")
         self.log(f"Nouveau terrain acheté : la {field_label(key)} est prête à être semée (−{prix_txt} €, "
                  f"{EXTRA_FIELD_UPKEEP} €/jour d'entretien).", "succes")
@@ -1295,8 +1534,12 @@ class Game:
         production = 0.0
         for cat, g in s["animaux"].items():
             if g["liste"]:
-                production += 100 * self.feed_factor(g["satiete"]) * (sum(a["sante"] for a in g["liste"]) / len(g["liste"]) / 100)
+                production += 100 * self.feed_factor(g["satiete"]) * self.mood_factor(self.mood(cat)) / 1.1 \
+                    * (sum(a["sante"] for a in g["liste"]) / len(g["liste"]) / 100)
         production /= max(1, sum(1 for g in s["animaux"].values() if g["liste"]))
+        herds = [c for c, g in s["animaux"].items() if g["liste"]]
+        humeur = sum(self.mood(c) for c in herds) / len(herds) if herds else 0
+        proprete = sum(s["animaux"][c]["proprete"] for c in herds) / len(herds) if herds else 100
         produits = {}
         for k in ITEMS:
             price, fair = self.stall_price(k), self.fair_price(k)
@@ -1322,6 +1565,19 @@ class Game:
             "repas": meals,
             "ration": round(self.feed_needed()),
             "malades": sum(1 for a in all_animals if a["sante"] < 50),
+            "humeur": round(humeur),
+            "proprete": round(proprete),
+            "humeur_animaux": {c: round(self.mood(c)) for c in s["animaux"]},
+            "a_ramasser": {c: (math.floor(g["a_ramasser"]) if c == "poules" else round(g["a_ramasser"], 1))
+                           for c, g in s["animaux"].items()},
+            "ramassage_max": {c: round(ANIMALS[c]["par_jour"] * len(g["liste"]) * RAMASSAGE_MAX, 1)
+                              for c, g in s["animaux"].items()},
+            "calin_pret": {a["id"]: s["minute"] - a["dernier_calin"] >= CALIN_PAUSE for a in all_animals},
+            "nuit": self.night(),
+            "soins_cultures": {"herbes": sum(1 for *_, b in self.beds() if b["herbes"] >= 30),
+                               "nuisibles": sum(1 for *_, b in self.beds() if b["nuisible"]),
+                               "a_preparer": sum(1 for *_, b in self.beds()
+                                                 if b["etat"] == "fletri" or (b["etat"] == "vide" and not b["sol_pret"]))},
             "objectif_argent": TARGET_MONEY,
             "charges": self.charges(),
             "gain_eoliennes": round(self.wind_income()),
@@ -1361,7 +1617,8 @@ class Game:
                     "ameliorations": UPGRADES, "batiments": BUILDINGS, "acheteurs": BUYERS, "emoji": EMOJI,
                     "prix_foin": FEED_PRICE, "prix_foin_bio": FEED_BIO_PRICE, "prix_chimique": CHEM_PRICE,
                     "prix_veto": VET_PRICE, "objectifs": OBJECTIVES, "serre_boost": SERRE_BOOST,
-                    "tracteur": 1.2, "marche_heures": MARKET_HOURS, "collecte_heure": COLLECTE_HEURE}
+                    "tracteur": 1.2, "marche_heures": MARKET_HOURS, "collecte_heure": COLLECTE_HEURE,
+                    "soins": SOINS, "traitements": TRAITEMENT, "enclos_sale": ENCLOS_SALE}
         return s
 
     # -------- persistance --------

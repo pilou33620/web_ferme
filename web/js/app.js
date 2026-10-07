@@ -332,6 +332,11 @@ const farmArea = (s) => `${nf1.format(12.5 + Object.keys(s.champs).length - 3)} 
 const STATE_RANK = ["mur", "fletri", "pousse", "seme", "vide"];
 const fieldState = (f) => STATE_RANK.find((e) => f.planches.some((b) => b.etat === e)) || "vide";
 const bedFree = (b) => b.etat === "vide" || b.etat === "fletri";
+const bedToPrep = (b) => b.etat === "fletri" || (b.etat === "vide" && !b.sol_pret);
+// état affiché d'une planche : une planche libre non labourée est « à préparer »
+const bedState = (b) => (b.etat === "vide" && !b.sol_pret ? ["À préparer", "warn"] : FIELD_STATE[b.etat]);
+// petits signaux sur une planche : herbes, nuisibles
+const bedFlags = (b) => `${b.nuisible ? "🐛" : ""}${b.herbes >= 30 ? "🌿" : ""}`;
 const cropsLabel = (s, f) => {
   const names = f.planches.filter((b) => b.culture && b.etat !== "vide").map((b) => `${emoji(s, b.culture)} ${s.ref.cultures[b.culture].nom}`);
   return [...new Set(names)].join(" + ");
@@ -340,22 +345,33 @@ let bedSel = {};              // planche affichée pour chaque parcelle
 
 function overviewPanel(s, d) {
   const rows = FarmMap.FIELDS.map((k) => {
-    const f = s.champs[k], [st, c] = FIELD_STATE[fieldState(f)];
+    const f = s.champs[k], fs = fieldState(f);
+    const [st, c] = fs === "vide" && f.planches.some(bedToPrep) ? ["À préparer", "warn"] : FIELD_STATE[fs];
+    const flags = f.planches.map(bedFlags).join("");
     const crop = cropsLabel(s, f);
-    return `<li style="cursor:pointer" ${A({ type: "zone", zone: k })}><b>${d.noms_champs[k]}<span class="muted">${crop ? ` · ${crop}` : ""}</span>${d.association[k] ? ` <span class="pill-tag assoc" title="Association de cultures">🤝</span>` : ""}</b><span class="pill-tag ${c}">${st}</span></li>`;
+    return `<li style="cursor:pointer" ${A({ type: "zone", zone: k })}><b>${d.noms_champs[k]}<span class="muted">${crop ? ` · ${crop}` : ""}</span>${d.association[k] ? ` <span class="pill-tag assoc" title="Association de cultures">🤝</span>` : ""}${flags ? ` <span title="Nuisibles / mauvaises herbes">${[...new Set(flags)].join("")}</span>` : ""}</b><span class="pill-tag ${c}">${st}</span></li>`;
   }).join("");
   return `<div class="zone-card"><div class="zone-top"><div class="zone-ico">${icon("map")}</div><div><div class="zone-name">Vue d'ensemble</div><div class="muted small">Ferme du Val Vert · ${farmArea(s)}</div></div></div>
     <div class="kv"><div><b>${d.n_cultures}</b><span>Cultures</span></div><div><b>${d.n_animaux}</b><span>Animaux</span></div><div><b>${pct(s.reservoir.niveau / s.reservoir.capacite * 100)}</b><span>Eau</span></div></div>
+    ${careSummary(d)}
     <ul class="mini-list">${rows}</ul>
     ${d.terrain_a_vendre ? `<div class="actions"><button class="btn ghost" ${A({ type: "zone", zone: "a_vendre" })}>${icon("plus")}Agrandir · ${d.terrain_a_vendre.nom} · ${eur(d.terrain_a_vendre.prix)}</button></div>` : ""}</div>
     ${techCard(s, d, true)}
     <div class="zone-card">${meter("Santé de la ferme", d.sante_ferme, barCls(d.sante_ferme))}${meter("Humidité moyenne du sol", d.humidite_moy, "blue")}${meter("Nourriture des animaux", d.nourriture, barCls(d.nourriture))}</div>`;
 }
 
+function careSummary(d) {
+  const c = d.soins_cultures, out = [];
+  if (c.nuisibles) out.push(`<span class="pill-tag bad">🐛 ${c.nuisibles} planche(s) attaquée(s)</span>`);
+  if (c.herbes) out.push(`<span class="pill-tag warn">🌿 ${c.herbes} à désherber</span>`);
+  if (c.a_preparer) out.push(`<span class="pill-tag warn">🪨 ${c.a_preparer} à préparer</span>`);
+  return out.length ? `<div class="tags" style="margin-bottom:10px">${out.join("")}</div>` : "";
+}
+
 function fieldPanel(s, d, k) {
   const f = s.champs[k], beds = f.planches, n = beds.length;
   const i = Math.min(bedSel[k] || 0, n - 1);
-  const b = beds[i], [st, c] = FIELD_STATE[b.etat];
+  const b = beds[i], [st, c] = bedState(b);
   const ref = b.culture ? s.ref.cultures[b.culture] : null;
   const free = bedFree(b), allFree = beds.every(bedFree), planted = beds.some((x) => x.etat !== "vide");
   const speed = (f.serre ? s.ref.serre_boost : 1) * (s.technologies.includes("desherbeur") ? s.ref.desherbeur : 1);
@@ -379,9 +395,9 @@ function fieldPanel(s, d, k) {
   html += `<div class="beds-head"><b>Planches</b><div class="seg">${[1, 2, 3].slice(0, s.ref.max_planches).map((m) =>
     `<button class="${m === n ? "on" : ""}" ${A({ type: "diviser", champ: k, planches: m })} ${allFree && m !== n ? "" : "disabled"} title="${allFree ? `Découper en ${m} planche${m > 1 ? "s" : ""}` : "Récoltez tout pour redécouper"}">${m}</button>`).join("")}</div></div>`;
   html += `<div class="beds" style="grid-template-columns:repeat(${n},1fr)">${beds.map((x, j) => {
-    const r = x.culture ? s.ref.cultures[x.culture] : null, [bst, bc] = FIELD_STATE[x.etat];
+    const r = x.culture ? s.ref.cultures[x.culture] : null, [bst, bc] = bedState(x);
     return `<button class="bed ${j === i ? "on" : ""} ${x.etat}" ${A({ type: "bed", champ: k, i: j })}>
-      <span class="bed-emo">${r && x.etat !== "vide" ? r.emoji : "🟫"}</span><b>${n > 1 ? `Planche ${j + 1}` : r && x.etat !== "vide" ? r.nom : "Libre"}</b>
+      <span class="bed-emo">${r && x.etat !== "vide" ? r.emoji : bedToPrep(x) ? "🪨" : "🟫"}${bedFlags(x) ? `<i class="bed-flags">${bedFlags(x)}</i>` : ""}</span><b>${n > 1 ? `Planche ${j + 1}` : r && x.etat !== "vide" ? r.nom : bedToPrep(x) ? "En friche" : "Libre"}</b>
       <small class="pill-tag ${bc}">${x.etat === "pousse" || x.etat === "seme" ? pct(x.croissance) : bst}</small></button>`;
   }).join("")}</div>`;
   if (n > 1 && !allFree) html += `<div class="muted small" style="margin-top:8px">Pour redécouper la parcelle, récoltez d'abord toutes les planches.</div>`;
@@ -402,6 +418,8 @@ function fieldPanel(s, d, k) {
     html += `<div class="muted small">${n > 1 ? `Cette planche occupe 1/${n} de la parcelle.` : "Toute la parcelle est disponible."}</div>`;
   }
   html += `</div>`;
+  if (ref && !free) html += careCard(s, k, i, b);
+  if (bedToPrep(b)) html += prepCard(s, k, i, b, beds);
   if (growing) {
     html += `<div class="zone-card"><div class="card-head"><h3>${icon("sprout")} Engrais · ${bedLbl(i).toLowerCase()}</h3>${engrais ? `<span class="pill-tag">Actif · ×${nf1.format(b.boost)}</span>` : ""}</div>
       <div class="ferti">
@@ -411,7 +429,7 @@ function fieldPanel(s, d, k) {
           <b>${icon("sparkle")}Engrais chimique · ${s.ref.prix_chimique} €</b><small>pousse ×1,8 · +20 % de récolte · qualité en baisse · <u>plus bio</u> (ni le miel)</small></button>
       </div></div>`;
   }
-  if (free) html += cropPicker(s, k, f, speed, i);
+  if (free && !bedToPrep(b)) html += cropPicker(s, k, f, speed, i);
   html += greenhouseCard(s, d, k, f, allFree);
   const tech = s.technologies.map((t) => `${s.ref.technologies[t].emoji} ${s.ref.technologies[t].nom}`).join(", ");
   html += `<div class="zone-card"><ul class="mini-list">
@@ -423,6 +441,40 @@ function fieldPanel(s, d, k) {
       <li>Eau disponible <span>${nf0.format(s.reservoir.niveau)} L</span></li>
       ${ref ? `<li>Cours du jour <span>${nf2.format(s.prix[b.culture])} €/kg</span></li>` : ""}</ul></div>`;
   return html;
+}
+
+// soins d'une planche en culture : nuisibles et mauvaises herbes
+function careCard(s, k, i, b) {
+  const robot = s.technologies.includes("desherbeur"), t = s.ref.traitements;
+  let html = `<div class="zone-card"><div class="card-head"><h3>${icon("shovel")} Soins de la planche</h3>${b.nuisible ? `<span class="pill-tag bad">🐛 Attaquée</span>` : ""}</div>`;
+  if (b.nuisible) {
+    html += `<div class="note warn">${icon("alert")}<span>Des <b>${b.nuisible}</b> rongent les plants : ils perdent de la santé à vue d'œil.</span></div>
+      <div class="ferti" style="margin-top:10px">
+        <button class="ferti-opt bio" ${A({ type: "traiter", champ: k, planche: i, traitement: "naturel" })} ${s.argent < t.naturel.prix ? "disabled" : ""}>
+          <b>${icon("leaf")}${t.naturel.nom} · ${t.naturel.prix} € · bio</b><small>chasse les ${b.nuisible} · la culture reste bio · ils peuvent revenir</small></button>
+        <button class="ferti-opt chem" ${A({ type: "traiter", champ: k, planche: i, traitement: "chimique" })} ${s.argent < t.chimique.prix ? "disabled" : ""}>
+          <b>${icon("sparkle")}${t.chimique.nom} · ${t.chimique.prix} €</b><small>radical · protège la planche 3 jours · <u>plus bio</u> (ni le miel)</small></button>
+      </div>`;
+  } else if (b.protege_jusqua > s.minute) {
+    html += `<div class="note info">${icon("check")}Protégée des nuisibles encore ${nf0.format(Math.ceil((b.protege_jusqua - s.minute) / 60))} h.</div>`;
+  }
+  if (robot) {
+    html += `<div class="muted small" style="margin-top:10px">🤖 Le robot désherbeur garde la planche propre.</div>`;
+  } else {
+    html += meter("Mauvaises herbes", b.herbes, b.herbes >= 60 ? "red" : b.herbes >= 30 ? "amber" : "", b.herbes >= 60 ? "Envahie" : b.herbes >= 30 ? "Ça pousse" : pct(b.herbes));
+    if (b.herbes >= 30) html += `<div class="muted small">${b.herbes >= 60 ? "Les herbes étouffent les plants : la pousse ralentit et la qualité baisse." : "Les herbes commencent à ralentir la pousse."}</div>`;
+    html += `<div class="actions"><button class="btn ${b.herbes >= 30 ? "" : "ghost"}" ${A({ type: "desherber", champ: k, planche: i })} ${b.herbes < 1 ? "disabled" : ""}>${icon("hand")}Désherber à la main</button></div>`;
+  }
+  return html + `</div>`;
+}
+
+// planche à labourer (après une récolte) ou plants flétris à arracher
+function prepCard(s, k, i, b, beds) {
+  const tracteur = s.ameliorations.includes("tracteur"), n = beds.filter(bedToPrep).length;
+  const what = b.etat === "fletri" ? "Arracher les plants flétris et labourer" : "Labourer la planche";
+  return `<div class="zone-card"><div class="card-head"><h3>${icon("tractor")} Préparer le sol</h3><span class="pill-tag warn">À faire avant de semer</span></div>
+    <div class="muted small">${b.etat === "fletri" ? "Les plants morts encombrent la planche." : "La terre est tassée et pleine d'herbes."} Retournez-la pour pouvoir semer.</div>
+    <div class="actions"><button class="btn green" ${A({ type: "preparer", champ: k, planche: i })}>${icon(tracteur ? "tractor" : "shovel")}${tracteur && n > 1 ? `Labourer la parcelle au tracteur (${n} planches)` : what}</button></div></div>`;
 }
 
 function cropPicker(s, k, f, speed, i) {
@@ -449,7 +501,7 @@ function cropPicker(s, k, f, speed, i) {
 }
 
 // technologies modernes : résumé (ferme) ou fiches d'achat (marché)
-const TECH_ICON = { drone: "drone", desherbeur: "robot", semoir: "seeder", recolteur: "basket" };
+const TECH_ICON = { drone: "drone", desherbeur: "robot", semoir: "seeder", recolteur: "basket", robot_traite: "milk" };
 function techStatus(s, d, t) {
   if (t === "drone") return d.drone_actif ? ["En vol", ""] : ["Au sol : orage", "warn"];
   return ["En service", ""];
@@ -544,7 +596,9 @@ function penPanel(s, d) {
     <div class="kv"><div><b>${pct(d.sante_animaux)}</b><span>Santé</span></div><div><b>${pct(d.nourriture)}</b><span>Nourris</span></div><div><b>${pct(d.production)}</b><span>Production</span></div></div>
     ${meter("Satiété", d.nourriture, barCls(d.nourriture))}
     <div class="muted small" style="margin-top:8px">${next ? `Prochain repas : <b>${next.heure}</b> — ${next.menu}${next.statut === "maintenant" ? " (maintenant !)" : ""}` : "Tous les repas du jour sont passés."}</div>
-    <div class="actions"><button class="btn green" ${A({ type: "nourrir" })}>${icon("bowl")}Nourrir · ${d.ration} kg</button><button class="btn ghost" ${A({ type: "goto", view: "elevage" })}>Voir l'élevage</button></div></div>
+    ${d.n_animaux ? `${meter(`Humeur ${moodEmo(d.humeur)}`, d.humeur, barCls(d.humeur))}${meter("Propreté", d.proprete, d.proprete < s.ref.enclos_sale ? "red" : "")}` : `<div class="muted small" style="margin-top:8px">Pas encore d'animaux : achetez vos premières bêtes dans l'élevage.</div>`}
+    <div class="actions"><button class="btn green" ${A({ type: "nourrir" })} ${d.n_animaux ? "" : "disabled"}>${icon("bowl")}Nourrir · ${d.ration} kg</button><button class="btn ghost" ${A({ type: "goto", view: "elevage" })}>Voir l'élevage</button></div>
+    ${d.n_animaux ? `<div class="actions" style="margin-top:8px">${herdButtons(s, d)}</div>` : ""}</div>
     <div class="zone-card"><ul class="mini-list">${cats}<li>Foin en stock<span>${nf0.format(s.stock.foin)} kg</span></li>
       <li>Foin bio en stock<span>${nf0.format(s.stock.foin_bio)} kg</span></li><li>Dernier repas<span>${s.repas_bio >= .99 ? "🌿 100 % bio" : `${pct(s.repas_bio * 100)} bio`}</span></li></ul></div>`;
 }
@@ -710,46 +764,108 @@ function farmAdvice(s, d) {
 }
 
 // ---------------------------------------------------------------- élevage
+const moodEmo = (h) => (h >= 70 ? "😊" : h >= 40 ? "🙂" : h >= 20 ? "😕" : "😢");
+const moodLbl = (h) => (h >= 70 ? "Heureux" : h >= 40 ? "Tranquille" : h >= 20 ? "Grognon" : "Malheureux");
+const herdsOut = (s) => Object.values(s.animaux).filter((g) => g.liste.length && g.au_pre).length;
+const herds = (s) => Object.values(s.animaux).filter((g) => g.liste.length).length;
+const PROD_LBL = { lait: "L de lait", oeufs: "œufs", laine: "kg de laine", fumier: "kg de fumier" };
+
+// boutons « pour tout le troupeau » : ramasser, nettoyer, sortir / rentrer
+function herdButtons(s, d) {
+  const toCollect = Object.entries(d.a_ramasser).some(([c, q]) => s.animaux[c].liste.length && q >= (c === "poules" ? 1 : 0.1));
+  const out = herdsOut(s), all = herds(s);
+  const dirty = Object.values(s.animaux).some((g) => g.liste.length && g.proprete <= 95);
+  const robot = s.technologies.includes("robot_traite");
+  return `${robot ? "" : `<button class="btn ${toCollect ? "green" : "ghost"}" ${A({ type: "ramasser" })} ${toCollect ? "" : "disabled"}>${icon("basket")}Tout ramasser</button>`}
+    <button class="btn ${d.proprete < s.ref.enclos_sale + 15 ? "" : "ghost"}" ${A({ type: "nettoyer" })} ${dirty ? "" : "disabled"}>${icon("shovel")}Nettoyer les enclos</button>
+    ${out ? `<button class="btn ${d.nuit ? "red" : "ghost"}" ${A({ type: "sortir", dehors: false })}>${icon("house")}Rentrer tout le monde</button>`
+      : `<button class="btn ghost" ${A({ type: "sortir", dehors: true })} ${all ? "" : "disabled"}>${icon("sun")}Sortir tout le monde</button>`}`;
+}
+
 function renderLivestock(s, d) {
-  const allOk = d.malades === 0;
-  setHTML($("#live-summary"), `<div class="live-top"><div><div class="card-kicker">Total du troupeau</div><div class="live-count">${d.n_animaux}</div><div class="muted small">animaux</div></div>
+  const allOk = d.malades === 0, empty = d.n_animaux === 0;
+  setHTML($("#live-summary"), empty
+    ? `<div class="live-top"><div><div class="card-kicker">Total du troupeau</div><div class="live-count">0</div><div class="muted small">animaux</div></div>
+        <span class="pill-tag grey">Élevage vide</span></div>
+        <div class="muted small">Vous démarrez sans bêtes. Choisissez une catégorie ci-dessous et achetez vos premiers animaux :
+        des poules pour les œufs (pas chères), une vache pour le lait, un cochon pour le fumier…</div>`
+    : `<div class="live-top"><div><div class="card-kicker">Total du troupeau</div><div class="live-count">${d.n_animaux}</div><div class="muted small">animaux</div></div>
     <span class="pill-tag ${allOk ? "" : "bad"}">${allOk ? "Tous en bonne santé" : `${d.malades} animal(aux) malade(s)`}</span></div>
     <div class="live-rings">
       <div><div class="ring-wrap sm">${ring(d.sante_animaux, "#2F7A4B", 76, 8)}</div><div class="lbl">Santé</div><div class="sub">moyenne</div></div>
       <div><div class="ring-wrap sm">${ring(d.nourriture, "#E9A93A", 76, 8)}</div><div class="lbl">Nourriture</div><div class="sub">satiété</div></div>
       <div><div class="ring-wrap sm">${ring(d.production, "#3C8CD6", 76, 8)}</div><div class="lbl">Production</div><div class="sub">rendement</div></div>
     </div>
-    ${d.malades ? `<div class="actions"><button class="btn" ${A({ type: "soigner" })}>${icon("vet")}Appeler le vétérinaire · ${d.malades * s.ref.prix_veto} €</button></div>` : ""}`);
+    ${meter(`Humeur ${moodEmo(d.humeur)}`, d.humeur, barCls(d.humeur), `${moodLbl(d.humeur)} · ${pct(d.humeur)}`)}
+    ${meter("Propreté des enclos", d.proprete, d.proprete < s.ref.enclos_sale ? "red" : d.proprete < 60 ? "amber" : "", d.proprete < s.ref.enclos_sale ? "sale : les bêtes tombent malades" : pct(d.proprete))}
+    ${d.nuit && herdsOut(s) ? `<div class="note warn">${icon("alert")}<span>Il fait nuit et des bêtes sont encore dehors : rentrez-les !</span></div>` : ""}
+    <div class="actions">${herdButtons(s, d)}
+    ${d.malades ? `<button class="btn" ${A({ type: "soigner" })}>${icon("vet")}Appeler le vétérinaire · ${d.malades * s.ref.prix_veto} €</button>` : ""}</div>`);
 
   const lbl = { fait: "Fait", maintenant: "Maintenant", manque: "Manqué", a_venir: "À venir" };
   const auto = s.ameliorations.includes("distributeur");
-  setHTML($("#feeding"), `<div class="feed-head"><div class="feed-ico">${icon("wheat")}</div><div><h3>Repas du jour</h3><div class="muted small">${auto ? "Distributeur automatique actif" : "Nourrissez le troupeau à chaque repas"}</div></div></div>
-    <div class="timeline">${d.repas.map((r) => `<div class="tl ${r.statut}"><div class="tl-dot">${r.statut === "fait" ? icon("check") : r.statut === "manque" ? icon("x") : icon("clock") || ""}</div>
-      <div class="tl-time">${r.heure}</div><div class="tl-menu">${r.menu}</div><div class="tl-state">${lbl[r.statut]}</div></div>`).join("")}</div>
+  setHTML($("#feeding"), `<div class="feed-head"><div class="feed-ico">${icon("wheat")}</div><div><h3>Repas du jour</h3><div class="muted small">${empty ? "Pas encore de bêtes à nourrir" : auto ? "Distributeur automatique actif" : "Nourrissez le troupeau à chaque repas"}</div></div></div>
+    <div class="timeline">${d.repas.map((r) => { const st = empty ? "a_venir" : r.statut; return `<div class="tl ${st}"><div class="tl-dot">${st === "fait" ? icon("check") : st === "manque" ? icon("x") : icon("clock") || ""}</div>
+      <div class="tl-time">${r.heure}</div><div class="tl-menu">${r.menu}</div><div class="tl-state">${empty ? "—" : lbl[st]}</div></div>`; }).join("")}</div>
     <div class="feed-foot"><div class="muted small">Ration : <b>${d.ration} kg</b> · Stock : <b>${nf0.format(s.stock.foin_bio)} kg</b> de foin bio, ${nf0.format(s.stock.foin)} kg de foin, ${nf0.format(s.stock.mais)} kg de maïs<br>
-      Dernier repas ${s.repas_bio >= .99 ? "🌿 100 % bio" : `${pct(s.repas_bio * 100)} bio`} · le foin bio est servi en premier et rend le lait, les œufs et la laine bio.</div>
-    <button class="btn green" ${A({ type: "nourrir" })}>${icon("bowl")}Nourrir</button></div>`);
+      ${empty ? "Le foin se garde : il servira quand vous aurez des bêtes." : `Dernier repas ${s.repas_bio >= .99 ? "🌿 100 % bio" : `${pct(s.repas_bio * 100)} bio`} · le foin bio est servi en premier. Au pré, les bêtes ont moins faim.`}</div>
+    <button class="btn green" ${A({ type: "nourrir" })} ${empty ? "disabled" : ""}>${icon("bowl")}Nourrir</button></div>`);
 
-  const prodLbl = { lait: "L de lait / j", oeufs: "œufs / j", laine: "kg de laine / j", fumier: "kg de fumier / j" };
   setHTML($("#cats"), Object.entries(s.animaux).map(([k, g]) => {
-    const ref = s.ref.animaux[k];
+    const ref = s.ref.animaux[k], n = g.liste.length;
     const p = s.stats.hier[ref.produit] ?? s.stats.production_jour[ref.produit] ?? 0;
+    const wait = d.a_ramasser[k], flags = [];
+    if (n && g.au_pre) flags.push(`<span class="pill-tag info">${icon("sun")}${s.ref.soins[k].pre}</span>`);
+    if (n && wait >= (k === "poules" ? 1 : 0.1) && !s.technologies.includes("robot_traite")) flags.push(`<span class="pill-tag warn">🧺 ${qf(wait)} ${PROD_LBL[ref.produit]}</span>`);
+    if (n && g.proprete < s.ref.enclos_sale) flags.push(`<span class="pill-tag bad">🧹 Sale</span>`);
     return `<button class="cat ${cat === k ? "active" : ""}" ${A({ type: "cat", cat: k })}><div class="cat-art">${ART.side[k]}</div>
-      <div class="cat-n">${g.liste.length}</div><div class="cat-name">${ref.nom}</div><div class="cat-prod">${qf(p)} ${prodLbl[ref.produit]}</div>
-      ${g.liste.length ? `<div class="cat-q">${qualityTag(d.qualite_animaux[k])}</div>` : ""}</button>`;
+      <div class="cat-n">${n}${n ? ` <span class="cat-mood" title="Humeur">${moodEmo(d.humeur_animaux[k])}</span>` : ""}</div><div class="cat-name">${ref.nom}</div>
+      <div class="cat-prod">${n ? `${qf(p)} ${PROD_LBL[ref.produit]} / j` : `${nf0.format(ref.prix)} € l'unité`}</div>
+      ${n ? `<div class="cat-q">${qualityTag(d.qualite_animaux[k])}</div>` : ""}${flags.length ? `<div class="tags">${flags.join("")}</div>` : ""}</button>`;
   }).join(""));
 
-  const g = s.animaux[cat], ref = s.ref.animaux[cat], prices = d.prix_animaux[cat];
-  const rows = g.liste.map((a, i) => `<div class="arow"><div class="arow-ico">${ART.side[cat]}</div>
-      <div><div class="arow-name">${a.nom}</div><div class="arow-sub">${ref.unite[0].toUpperCase() + ref.unite.slice(1)} · n°${a.id.slice(2)}</div></div>
-      <div class="bar ${barCls(a.sante)}"><i style="width:${a.sante}%"></i></div>
+  const g = s.animaux[cat], ref = s.ref.animaux[cat], prices = d.prix_animaux[cat], soin = s.ref.soins[cat];
+  const unite = ref.unite[0].toUpperCase() + ref.unite.slice(1);
+  const rows = g.liste.map((a, i) => {
+    const ready = d.calin_pret[a.id];
+    return `<div class="arow"><div class="arow-ico">${ART.side[cat]}</div>
+      <div><div class="arow-name">${a.nom} <span title="${moodLbl(a.humeur)}">${moodEmo(a.humeur)}</span></div><div class="arow-sub">${unite} · n°${a.id.slice(2)}</div></div>
+      <div class="bar ${barCls(a.sante)}" title="Santé ${pct(a.sante)}"><i style="width:${a.sante}%"></i></div>
       <span class="pill-tag ${a.sante >= 70 ? "" : a.sante >= 50 ? "warn" : "bad"}">${a.sante >= 70 ? "En forme" : a.sante >= 50 ? "Fatigué" : "Malade"}</span>
-      <button class="btn ghost sm" title="Vendre au marché aux bestiaux" ${A({ type: "vendre_animal", categorie: cat, id: a.id })}>Vendre · ${eur(prices[i])}</button></div>`).join("");
+      <div class="arow-btns"><button class="btn sm ${ready ? "" : "ghost"}" title="${ready ? `${soin.calin} ${a.nom}` : "Déjà câliné, repassez plus tard"}" ${A({ type: "caliner", categorie: cat, id: a.id })} ${ready ? "" : "disabled"}>${icon("heart")}</button>
+      <button class="btn ghost sm" title="Vendre au marché aux bestiaux" ${A({ type: "vendre_animal", categorie: cat, id: a.id })}>Vendre · ${eur(prices[i])}</button></div></div>`;
+  }).join("");
   const prodNom = s.ref.produits[ref.produit].nom.toLowerCase();
   setHTML($("#animal-list"), `<div class="card-head"><div><h3>Vos ${ref.nom.toLowerCase()}</h3>
-      <div class="muted small">Produit : ${emoji(s, ref.produit)} ${prodNom} · qualité selon leur santé et leurs repas. Vendre l'animal ou garder sa production : à vous de voir.</div></div>
+      <div class="muted small">Produit : ${emoji(s, ref.produit)} ${prodNom} · qualité selon leur santé, leurs repas et leur humeur. Vendre l'animal ou garder sa production : à vous de voir.</div></div>
     <div class="head-btns"><button class="btn sm" ${A({ type: "acheter", article: cat, quantite: 1 })}>${icon("plus")}Acheter · ${nf0.format(ref.prix)} €</button></div></div>
-    <div class="animal-rows">${rows || `<div class="muted">Aucun animal dans cette catégorie.</div>`}</div>`);
+    ${g.liste.length ? careBox(s, d, cat) : ""}
+    <div class="animal-rows">${rows || `<div class="muted">Aucun animal dans cette catégorie. Achetez-en un pour commencer !</div>`}</div>`);
+}
+
+// soins d'un enclos : ramasser la production, nettoyer, sortir, câliner tout le monde
+function careBox(s, d, k) {
+  const g = s.animaux[k], ref = s.ref.animaux[k], soin = s.ref.soins[k];
+  const wait = d.a_ramasser[k], max = d.ramassage_max[k], robot = s.technologies.includes("robot_traite");
+  const anyReady = g.liste.some((a) => d.calin_pret[a.id]);
+  const collect = robot
+    ? `<div class="care"><div class="care-top"><b>${emoji(s, ref.produit)} ${soin.ramasser}</b></div><div class="muted small">🥛 Le robot de traite s'en charge tout seul.</div></div>`
+    : `<div class="care"><div class="care-top"><b>${emoji(s, ref.produit)} ${soin.ramasser}</b><span class="muted small">${qf(wait)} ${PROD_LBL[ref.produit]} en attente</span></div>
+        <div class="bar ${wait >= max * .95 ? "red" : wait >= max * .6 ? "amber" : ""}"><i style="width:${max ? Math.min(100, (wait / max) * 100) : 0}%"></i></div>
+        <div class="muted small">${wait >= max * .95 ? "Plein : la production est perdue tant que vous ne passez pas !" : "Au-delà d'une journée d'attente, la production est perdue."}</div>
+        <button class="btn sm ${wait >= max * .3 ? "green" : "ghost"}" ${A({ type: "ramasser", categorie: k })} ${wait >= (k === "poules" ? 1 : 0.05) ? "" : "disabled"}>${icon("basket")}${soin.ramasser}</button></div>`;
+  return `<div class="care-grid">${collect}
+    <div class="care"><div class="care-top"><b>🧹 Nettoyer ${soin.enclos}</b><span class="muted small">${pct(g.proprete)}</span></div>
+      <div class="bar ${g.proprete < s.ref.enclos_sale ? "red" : g.proprete < 60 ? "amber" : ""}"><i style="width:${g.proprete}%"></i></div>
+      <div class="muted small">${g.proprete < s.ref.enclos_sale ? "Litière sale : les bêtes tombent malades." : "Une litière propre garde les bêtes en bonne santé. Le fumier part au tas."}</div>
+      <button class="btn sm ${g.proprete < 60 ? "" : "ghost"}" ${A({ type: "nettoyer", categorie: k })} ${g.proprete > 95 ? "disabled" : ""}>${icon("shovel")}Changer la litière</button></div>
+    <div class="care"><div class="care-top"><b>${g.au_pre ? "🌳" : "🏠"} ${g.au_pre ? `Dehors, ${soin.pre}` : "À l'abri"}</b></div>
+      <div class="muted small">${g.au_pre ? (d.nuit ? "Il fait nuit : rentrez-les vite !" : "Ils broutent (moins faim) et sont de bonne humeur. À rentrer le soir.") : `Sortis ${soin.pre}, ils ont moins faim et le moral remonte.${k === "poules" ? " Attention au renard la nuit." : ""}`}</div>
+      <button class="btn sm ${g.au_pre && d.nuit ? "red" : "ghost"}" ${A({ type: "sortir", categorie: k, dehors: !g.au_pre })}>${icon(g.au_pre ? "house" : "sun")}${g.au_pre ? "Rentrer" : `Sortir ${soin.pre}`}</button></div>
+    <div class="care"><div class="care-top"><b>${moodEmo(d.humeur_animaux[k])} Humeur</b><span class="muted small">${moodLbl(d.humeur_animaux[k])}</span></div>
+      <div class="bar ${barCls(d.humeur_animaux[k])}"><i style="width:${d.humeur_animaux[k]}%"></i></div>
+      <div class="muted small">Des bêtes heureuses produisent plus (+10 %) et mieux.</div>
+      <button class="btn sm ${anyReady ? "" : "ghost"}" ${A({ type: "caliner", categorie: k })} ${anyReady ? "" : "disabled"}>${icon("heart")}${soin.calin} tout le monde</button></div></div>`;
 }
 
 // ---------------------------------------------------------------- marché

@@ -258,7 +258,21 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
 .cat-prod { font-size: 12px; font-weight: 700; color: var(--green); margin-top: 4px; }
 #animal-list { margin-top: 16px; }
 .animal-rows { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 28px; }
-.arow { display: grid; grid-template-columns: 44px minmax(0, 1fr) 70px 78px auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.arow { display: grid; grid-template-columns: 44px minmax(0, 1fr) 60px 78px auto; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.arow-btns { display: flex; gap: 6px; }
+.arow-btns .btn { white-space: nowrap; }
+.cat-mood { font-size: 18px; vertical-align: middle; }
+.cat .tags { margin-top: 8px; }
+.cat .tags .pill-tag svg.i { width: 12px; height: 12px; }
+/* soins d'un enclos */
+.care-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 6px; }
+.care { background: var(--bg); border-radius: 18px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.care-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 6px; font-size: 13.5px; }
+.care-top span { white-space: nowrap; }
+.care .btn.ghost { background: #fff; }
+.care .muted.small { flex: 1; line-height: 1.35; }
+.care .btn { align-self: flex-start; }
+.care .bar { background: #fff; }
 .arow-ico { width: 44px; height: 44px; border-radius: 14px; background: var(--bg); display: grid; place-items: center; overflow: hidden; }
 .arow-ico svg { width: 36px; height: auto; }
 .arow-name { font-weight: 700; }
@@ -444,6 +458,12 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
   .farm-layout, #view-marche .farm-layout { grid-template-columns: 1fr; }
   .stats-grid, .cats { grid-template-columns: repeat(2, 1fr); }
   .animal-rows { grid-template-columns: 1fr; }
+  .care-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .care-grid { grid-template-columns: 1fr; }
+  .arow { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .arow > .bar, .arow > .pill-tag { display: none; }
 }
 
 /* ---------- carte : terrains à vendre, tracteur ---------- */
@@ -566,7 +586,8 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
 .bed { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; padding: 10px; border-radius: 16px; background: #F4ECE0; border: 2px solid transparent; transition: border-color .2s, transform .12s; min-width: 0; }
 .bed:hover { border-color: #D9C9AE; }
 .bed.on { border-color: var(--forest); background: #fff; box-shadow: 0 4px 12px rgba(40,35,20,.08); }
-.bed .bed-emo { font-size: 20px; line-height: 1; }
+.bed .bed-emo { font-size: 20px; line-height: 1; position: relative; }
+.bed .bed-flags { font-style: normal; font-size: 13px; margin-left: 3px; vertical-align: top; }
 .bed b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .bed small.pill-tag { padding: 2px 7px; font-size: 10.5px; }
 .bed.pousse, .bed.seme { background: #EEF5E6; }

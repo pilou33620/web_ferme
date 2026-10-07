@@ -8,15 +8,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from engine import BUILDINGS, MIN_PER_DAY, ActionError, Game  # noqa: E402
 
 
+def prep(g, *fields):
+    """Laboure toutes les planches des parcelles données (toutes par défaut)."""
+    for k in fields or list(g.s["champs"]):
+        for b in g.s["champs"][k]["planches"]:
+            if b["etat"] in ("vide", "fletri") and not (b["etat"] == "vide" and b["sol_pret"]):
+                g.act({"type": "preparer", "champ": k, "planche": g.s["champs"][k]["planches"].index(b)})
+
+
+def herd(g, **n):
+    """Achète un petit troupeau (sans toucher à l'argent du test)."""
+    money = g.s["argent"]
+    g.s["argent"] = 14000   # sous l'objectif de 15 000 € (sinon la partie serait gagnée)
+    for cat, q in (n or {"vaches": 4, "poules": 8, "moutons": 2, "cochons": 2}).items():
+        g.act({"type": "acheter", "article": cat, "quantite": q})
+    g.s["argent"] = money
+
+
 class EngineTest(unittest.TestCase):
     def setUp(self):
         self.g = Game(seed=42)
+        prep(self.g)
 
     def test_initial_state(self):
-        v = self.g.view()
+        g = Game(seed=1)
+        v = g.view()
         self.assertEqual(v["derive"]["jour"], 1)
         self.assertEqual(v["derive"]["heure"], "05:00")
-        self.assertEqual(v["derive"]["n_animaux"], 16)
+        self.assertEqual(v["derive"]["n_animaux"], 0)                     # le fermier démarre sans bêtes
+        self.assertEqual(v["derive"]["soins_cultures"]["a_preparer"], 3)  # parcelles en friche
+        with self.assertRaises(ActionError):
+            g.act({"type": "semer", "champ": "parcelle_a", "culture": "tomates"})
+        with self.assertRaises(ActionError):
+            g.act({"type": "nourrir"})
 
     def test_time_and_new_day(self):
         self.g.advance(MIN_PER_DAY)
@@ -25,6 +49,7 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(len(self.g.view()["derive"]["semaine"]), 7)
 
     def test_feed_marks_meal(self):
+        herd(self.g)
         self.g.advance(60)  # 06:00
         stock = self.g.s["stock"]["foin"]
         self.g.act({"type": "nourrir"})
@@ -50,6 +75,9 @@ class EngineTest(unittest.TestCase):
         self.g.act({"type": "recolter", "champ": "parcelle_b"})
         self.assertGreater(self.g.s["stock"]["carottes"], 100)
         self.assertEqual((f["etat"], f["culture"]), ("vide", None))
+        with self.assertRaises(ActionError):   # après la récolte, il faut relabourer
+            self.g.act({"type": "semer", "champ": "parcelle_b", "culture": "fraises"})
+        self.g.act({"type": "preparer", "champ": "parcelle_b"})
         self.g.act({"type": "semer", "champ": "parcelle_b", "culture": "fraises"})
         self.assertEqual(f["culture"], "fraises")
 
@@ -90,6 +118,7 @@ class EngineTest(unittest.TestCase):
 
     def test_greenhouse_grows_faster(self):
         g2 = Game(seed=42)
+        prep(g2)
         for g, serre in ((self.g, False), (g2, True)):
             g.s["champs"]["parcelle_b"]["serre"] = serre
             g.act({"type": "semer", "champ": "parcelle_b", "culture": "tomates"})
@@ -206,12 +235,18 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(g.s["stock"]["lait"], 0)            # tourné, jeté
 
     def test_milk_collection(self):
+        herd(self.g, vaches=4)
+        self.g.act({"type": "nourrir"})
+        self.goto(self.g, 1, 19)
+        self.g.act({"type": "ramasser", "categorie": "vaches"})   # traite du soir
+        self.assertGreater(self.g.s["stock"]["lait"], 10)
         self.goto(self.g, 1, 21)
         self.assertLess(self.g.s["stock"]["lait"], 1)
         self.assertTrue(any("collecté" in j["msg"] for j in self.g.s["journal"]))
 
     def test_sell_animal(self):
         g = self.g
+        herd(g, poules=3)
         n, money = len(g.s["animaux"]["poules"]["liste"]), g.s["argent"]
         g.act({"type": "vendre_animal", "categorie": "poules"})
         self.assertEqual(len(g.s["animaux"]["poules"]["liste"]), n - 1)
@@ -250,6 +285,7 @@ class EngineTest(unittest.TestCase):
 
     def test_bio_feed(self):
         g = self.g
+        herd(g)
         g.s["stock"]["foin_bio"] = 1000
         g.act({"type": "nourrir"})
         self.assertEqual(g.s["repas_bio"], 1.0)
@@ -261,6 +297,7 @@ class EngineTest(unittest.TestCase):
             self.g.act({"type": "ameliorer", "amelioration": "tracteur"})
 
     def test_neglect_hurts(self):
+        herd(self.g)
         self.g.advance(3 * MIN_PER_DAY)
         self.assertLess(self.g.view()["derive"]["sante_animaux"], 80)
 
@@ -285,6 +322,7 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(v["derive"]["noms_champs"]["parcelle_d"], "Parcelle D")
         self.assertEqual(v["derive"]["terrain_a_vendre"]["cle"], "parcelle_e")
         self.assertIn("parcelle_d", v["ref"]["parcelles"])
+        prep(g, "parcelle_d")   # un terrain acheté est une prairie : à labourer
         # on peut semer, récolter et mettre une serre sur la nouvelle parcelle
         g.act({"type": "semer", "champ": "parcelle_d", "culture": "salades"})
         g.s["champs"]["parcelle_d"]["planches"][0].update(etat="mur", croissance=100.0)
@@ -327,6 +365,7 @@ class EngineTest(unittest.TestCase):
         f = g.s["champs"]["parcelle_a"]
         g.act({"type": "diviser", "champ": "parcelle_a", "planches": 2})
         self.assertEqual(len(f["planches"]), 2)
+        self.assertTrue(all(b["sol_pret"] for b in f["planches"]))   # découper garde le labour
         with self.assertRaises(ActionError):
             g.act({"type": "diviser", "champ": "parcelle_a", "planches": 4})
         g.act({"type": "semer", "champ": "parcelle_a", "planche": 0, "culture": "salades"})
@@ -377,6 +416,7 @@ class EngineTest(unittest.TestCase):
         results = {}
         for techs in ((), ("drone", "desherbeur")):
             g = Game(seed=5)
+            prep(g)
             g.s["meteo"] = {"type": "canicule", "nom": "Canicule", "temp": 38}
             g.s["technologies"] = list(techs)
             g.act({"type": "semer", "champ": "parcelle_b", "culture": "tomates"})
@@ -405,24 +445,42 @@ class EngineTest(unittest.TestCase):
     def test_diligent_player_progresses(self):
         """Un joueur appliqué doit gagner de l'argent sur 15 jours."""
         g = self.g
+        bought = False
         for _ in range(15 * 24 * 6):
             g.advance(10)
             if g.s["statut"] != "en_cours":
                 break
-            if g.hour % 6 < 0.2 and g.hour >= 5.9:
+            if not bought and g.day == 3:   # les premières bêtes, une fois les cultures lancées
+                g.act({"type": "acheter", "article": "poules", "quantite": 10})
+                g.act({"type": "acheter", "article": "cochons", "quantite": 1})
+                bought = True
+            if bought and g.hour % 6 < 0.2 and g.hour >= 5.9:
                 try:
                     if g.s["stock"]["foin"] + g.s["stock"]["mais"] < g.feed_needed() * 3:
                         g.act({"type": "acheter", "article": "foin", "quantite": 600})
                     g.act({"type": "nourrir"})
+                    g.act({"type": "ramasser"})
+                    g.act({"type": "caliner", "categorie": "poules"})
                 except ActionError:
                     pass
+                for act in ({"type": "nettoyer"}, {"type": "sortir", "dehors": 8 <= g.hour < 18}):
+                    try:
+                        g.act(act)
+                    except ActionError:
+                        pass
             for k, field in g.s["champs"].items():
                 f = field["planches"][0]
                 try:
                     if f["etat"] == "mur":
                         g.act({"type": "recolter", "champ": k})
-                    if f["etat"] in ("vide", "fletri"):
+                    if f["etat"] == "fletri" or (f["etat"] == "vide" and not f["sol_pret"]):
+                        g.act({"type": "preparer", "champ": k})
+                    if f["etat"] == "vide":
                         g.act({"type": "semer", "champ": k, "culture": "tomates" if k == "parcelle_a" else "carottes"})
+                    if f["nuisible"]:
+                        g.act({"type": "traiter", "champ": k, "traitement": "naturel"})
+                    if f["herbes"] > 40:
+                        g.act({"type": "desherber", "champ": k})
                     if field["humidite"] < 30:
                         g.act({"type": "arroser", "champ": k})
                 except ActionError:
@@ -437,6 +495,154 @@ class EngineTest(unittest.TestCase):
               f"{g.n_animals()} animaux, santé {g.view()['derive']['sante_ferme']} %")
         self.assertEqual(g.s["statut"], "en_cours")
         self.assertGreater(g.s["argent"], 1500)
+
+    def test_weeds_slow_growth(self):
+        g, g2 = self.g, Game(seed=42)
+        prep(g2)
+        for x in (g, g2):
+            x.act({"type": "semer", "champ": "parcelle_b", "culture": "pommes_de_terre"})
+            x.s["champs"]["parcelle_b"]["humidite"] = 80
+        g2.s["champs"]["parcelle_b"]["planches"][0]["herbes"] = 100   # planche envahie
+        g.advance(300)
+        g2.advance(300)
+        b, b2 = g.s["champs"]["parcelle_b"]["planches"][0], g2.s["champs"]["parcelle_b"]["planches"][0]
+        self.assertGreater(b["herbes"], 0)                              # elles repoussent
+        self.assertGreater(b["croissance"], b2["croissance"] * 1.3)
+        g2.act({"type": "desherber", "champ": "parcelle_b"})
+        self.assertEqual(b2["herbes"], 0)
+        g.s["technologies"] = ["desherbeur"]                           # le robot s'en charge
+        g.advance(60)
+        self.assertEqual(b["herbes"], 0)
+
+    def test_pests_and_treatments(self):
+        g = self.g
+        g.act({"type": "semer", "champ": "parcelle_a", "culture": "tomates"})
+        b = g.s["champs"]["parcelle_a"]["planches"][0]
+        with self.assertRaises(ActionError):
+            g.act({"type": "traiter", "champ": "parcelle_a"})
+        b["nuisible"] = "pucerons"
+        g.s["champs"]["parcelle_a"]["humidite"] = 80
+        g.advance(120)
+        self.assertLess(b["sante"], 100)
+        money = g.s["argent"]
+        g.act({"type": "traiter", "champ": "parcelle_a", "traitement": "naturel"})
+        self.assertIsNone(b["nuisible"])
+        self.assertFalse(b["chimique"])
+        self.assertLess(g.s["argent"], money)
+        b["nuisible"] = "pucerons"
+        g.act({"type": "traiter", "champ": "parcelle_a", "traitement": "chimique"})
+        self.assertTrue(b["chimique"])
+        self.assertGreater(b["protege_jusqua"], g.s["minute"])
+        # les nuisibles finissent par arriver tout seuls sur une planche non protégée
+        b["protege_jusqua"] = 0
+        g.s["champs"]["parcelle_a"]["humidite"] = 80
+        for _ in range(20):
+            g.advance(MIN_PER_DAY)
+            if b["nuisible"] or b["etat"] == "fletri":
+                break
+            b["herbes"] = 0
+        self.assertTrue(b["nuisible"] or b["etat"] == "fletri")
+
+    def test_tractor_prepares_whole_field(self):
+        g = Game(seed=3)
+        g.act({"type": "diviser", "champ": "parcelle_a", "planches": 3})
+        g.act({"type": "preparer", "champ": "parcelle_a", "planche": 1})
+        self.assertEqual([b["sol_pret"] for b in g.s["champs"]["parcelle_a"]["planches"]], [False, True, False])
+        g.s["argent"] = 5000
+        g.act({"type": "ameliorer", "amelioration": "tracteur"})
+        g.act({"type": "preparer", "champ": "parcelle_a", "planche": 0})
+        self.assertTrue(all(b["sol_pret"] for b in g.s["champs"]["parcelle_a"]["planches"]))
+        with self.assertRaises(ActionError):
+            g.act({"type": "preparer", "champ": "parcelle_a"})
+
+    def test_collect_by_hand(self):
+        g = self.g
+        herd(g, vaches=2, poules=6)
+        g.act({"type": "nourrir"})
+        with self.assertRaises(ActionError):
+            g.act({"type": "ramasser"})
+        g.advance(6 * 60)
+        self.assertEqual(g.s["stock"]["lait"], 0)                # le lait attend la traite
+        self.assertGreater(g.s["animaux"]["vaches"]["a_ramasser"], 5)
+        g.act({"type": "ramasser", "categorie": "vaches"})
+        self.assertGreater(g.s["stock"]["lait"], 5)
+        self.assertEqual(g.s["animaux"]["vaches"]["a_ramasser"], 0)
+        # sans traite, la production plafonne à une journée
+        for _ in range(3):
+            g.act({"type": "nourrir"})
+            g.advance(8 * 60)
+        self.assertLessEqual(g.s["animaux"]["vaches"]["a_ramasser"], 2 * 22.0 + 1e-6)
+        # le robot de traite ramasse tout seul
+        g.s["technologies"] = ["robot_traite"]
+        lait = g.s["stock"]["lait"]
+        g.act({"type": "nourrir"})
+        g.advance(60)
+        self.assertGreater(g.s["stock"]["lait"], lait)
+
+    def test_clean_pen(self):
+        g = self.g
+        herd(g, cochons=2)
+        grp = g.s["animaux"]["cochons"]
+        for _ in range(12):
+            g.act({"type": "nourrir"})
+            g.advance(6 * 60)
+        self.assertLess(grp["proprete"], 35)
+        self.assertLess(grp["liste"][0]["sante"], 100)            # enclos sale : les bêtes tombent malades
+        fumier = g.s["stock"]["fumier"]
+        g.act({"type": "nettoyer", "categorie": "cochons"})
+        self.assertEqual(grp["proprete"], 100)
+        self.assertGreater(g.s["stock"]["fumier"], fumier + 4)
+        with self.assertRaises(ActionError):
+            g.act({"type": "nettoyer", "categorie": "cochons"})
+
+    def test_cuddles_and_mood(self):
+        g = self.g
+        herd(g, moutons=2)
+        a, b = g.s["animaux"]["moutons"]["liste"]
+        a["humeur"] = b["humeur"] = 30
+        g.act({"type": "caliner", "categorie": "moutons", "id": a["id"]})
+        self.assertEqual((a["humeur"], b["humeur"]), (55, 30))
+        with self.assertRaises(ActionError):                      # pas deux câlins d'affilée
+            g.act({"type": "caliner", "categorie": "moutons", "id": a["id"]})
+        g.act({"type": "caliner", "categorie": "moutons"})        # tout l'enclos : seulement ceux qui attendent
+        self.assertEqual((a["humeur"], b["humeur"]), (55, 55))
+        self.assertGreater(g.mood_factor(80), g.mood_factor(20))
+
+    def test_pasture(self):
+        g = self.g
+        g.s["meteo"] = {"type": "soleil", "nom": "Ensoleillé", "temp": 25}
+        herd(g, vaches=2, poules=4)
+        g.advance(3 * 60)   # 08:00
+        g.act({"type": "nourrir"})
+        g.act({"type": "sortir", "categorie": "vaches", "dehors": True})
+        g.advance(6 * 60)
+        v, p = g.s["animaux"]["vaches"], g.s["animaux"]["poules"]
+        self.assertGreater(v["satiete"], p["satiete"] + 15)      # au pré, elles broutent
+        self.assertGreater(g.mood("vaches"), g.mood("poules"))
+        with self.assertRaises(ActionError):
+            g.act({"type": "sortir", "categorie": "vaches", "dehors": True})
+        g.act({"type": "sortir", "dehors": False})
+        self.assertFalse(v["au_pre"])
+        # des poules laissées dehors la nuit attirent le renard
+        g.act({"type": "sortir", "categorie": "poules", "dehors": True})
+        n = len(p["liste"])
+        for _ in range(6):
+            g.advance(MIN_PER_DAY)
+        self.assertLess(len(p["liste"]), n)
+
+    def test_migrate_old_herd(self):
+        st = json.loads(self.g.dumps())
+        st["animaux"]["vaches"] = {"satiete": 80.0, "prochain_id": 1,
+                                   "liste": [{"id": "va0", "nom": "Marguerite", "sante": 90.0}]}
+        for b in st["champs"]["parcelle_a"]["planches"]:
+            for k in ("sol_pret", "herbes", "nuisible", "protege_jusqua"):
+                del b[k]
+        g = Game(st)
+        self.assertEqual(g.s["animaux"]["vaches"]["proprete"], 100.0)
+        self.assertEqual(g.s["animaux"]["vaches"]["liste"][0]["humeur"], 70.0)
+        self.assertTrue(g.s["champs"]["parcelle_a"]["planches"][0]["sol_pret"])
+        g.advance(120)
+        g.view()
 
 
 if __name__ == "__main__":
