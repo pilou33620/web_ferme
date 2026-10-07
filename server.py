@@ -1,8 +1,8 @@
 """Serveur de « La Ferme du Val Vert » — aucune dépendance externe.
 
-    python server.py            → http://localhost:8000
+    python server.py            → http://localhost:8000, et joignable depuis les autres appareils du réseau
     python server.py --port 9000 --nouvelle
-    python server.py --host 0.0.0.0   → joignable depuis les autres appareils du réseau
+    python server.py --local    → cet appareil seulement (127.0.0.1)
     python server.py --sans-maj → ne pas chercher de mise à jour au démarrage
 """
 from __future__ import annotations
@@ -147,8 +147,10 @@ def main():
     env_port = os.environ.get("PORT")
     p.add_argument("--port", type=int, default=int(env_port) if env_port else None,
                    help=f"port prioritaire (défaut : $PORT, sinon le premier libre parmi {PORTS_CANDIDATS})")
-    p.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"),
-                   help="adresse d'écoute : 127.0.0.1 = cet appareil seulement, 0.0.0.0 = tout le réseau local")
+    p.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"),
+                   help="adresse d'écoute (défaut : $HOST, sinon 0.0.0.0 = tout le réseau local)")
+    p.add_argument("--local", action="store_const", const="127.0.0.1", dest="host",
+                   help="n'accepter que cet appareil (équivaut à --host 127.0.0.1)")
     p.add_argument("--nouvelle", action="store_true", help="ignorer la sauvegarde")
     p.add_argument("--sans-navigateur", action="store_true")
     p.add_argument("--sans-maj", action="store_true", help="ne pas chercher de mise à jour au démarrage")
@@ -179,9 +181,12 @@ def main():
     url = f"http://localhost:{port}"
     print(f"🌾 La Ferme du Val Vert tourne sur {url}  (Ctrl+C pour quitter)")
     if args.host not in ("127.0.0.1", "localhost"):
-        ip = lan_ip()
+        ip = args.host if args.host not in ("0.0.0.0", "", "::") else lan_ip()
         if ip:
             print(f"   depuis un autre appareil du réseau : http://{ip}:{port}")
+        else:
+            print(f"   depuis un autre appareil du réseau : http://<adresse IP de ce PC>:{port}")
+        print("   (si ça ne répond pas : autorisez Python dans le pare-feu, sur les réseaux privés)")
 
     # arrêt demandé par un autre programme (launcher, kill…) → même sortie propre que Ctrl+C
     def stop(*_):

@@ -6,13 +6,21 @@ Le style graphique s'inspire d'une maquette d'appli « Farm App » (fond crème,
 ## Lancer le jeu
 
 ```bash
-python server.py              # ouvre http://localhost:8000
+python server.py              # ouvre http://localhost:8000 (et accessible depuis le réseau local)
 python server.py --nouvelle   # ignore la sauvegarde et repart de zéro
 python server.py --port 9000 --sans-navigateur
-python server.py --host 0.0.0.0   # jouable depuis les autres appareils du réseau (iPad, PC…)
+python server.py --local      # cet appareil seulement, pas d'accès depuis le réseau
 ```
 
-Le port et l'adresse peuvent aussi venir des variables d'environnement `PORT` et `HOST`. Si le port est déjà pris, le jeu essaie le suivant.
+### Jouer depuis un autre appareil (téléphone, tablette, autre PC)
+
+Par défaut le jeu écoute sur tout le réseau local (`0.0.0.0`). Au démarrage, la console affiche l'adresse à taper sur l'autre appareil, par exemple `http://192.168.1.20:8000`. Les deux appareils doivent être sur le même réseau (même box / Wi-Fi).
+
+Sous Windows, au premier lancement, le pare-feu demande s'il faut autoriser Python : cochez **Réseaux privés** et validez. Si la fenêtre n'est pas apparue ou a été refusée : *Pare-feu Windows Defender → Autoriser une application → Python → cocher « Privé »*. Vérifiez aussi que votre Wi-Fi est réglé en réseau **privé** et non public.
+
+Tous les appareils jouent la **même partie** : ce qui est fait sur l'un apparaît sur les autres.
+
+Le port et l'adresse peuvent aussi venir des variables d'environnement `PORT` et `HOST` (`--host` permet de choisir l'adresse d'écoute exacte). Si le port est déjà pris, le jeu essaie le suivant.
 Le fichier `web_launcher.json` permet de lancer le jeu depuis [web_launcher](https://github.com/pilou33620/web_launcher) (port libre automatique, accès réseau local).
 Sous Windows, on peut aussi double-cliquer sur **`Lancer la ferme.bat`**.
 
