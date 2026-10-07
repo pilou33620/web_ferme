@@ -23,7 +23,7 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-item active" data-view="accueil"><span data-icon="home"></span>Accueil</button>
+        <button class="nav-item active" data-view="accueil"><span data-icon="home"></span>Accueil<em class="badge" id="badge-accueil"></em></button>
         <button class="nav-item" data-view="ferme"><span data-icon="map"></span>Ma ferme</button>
         <button class="nav-item" data-view="meteo"><span data-icon="sun"></span>Météo<em class="badge" id="badge-meteo"></em></button>
         <button class="nav-item" data-view="elevage"><span data-icon="cow"></span>Élevage<em class="badge" id="badge-elevage"></em></button>
@@ -33,6 +33,7 @@
       <div class="side-card clock-card">
         <div class="clock-day" id="clk-day">Jour 1</div>
         <div class="clock-time" id="clk-time">05:00</div>
+        <div class="clock-season" id="clk-season"></div>
         <div class="daybar"><i id="clk-bar"></i></div>
         <div class="speed" id="speed">
           <button data-speed="0" title="Pause"><span data-icon="pause"></span></button>
@@ -63,7 +64,7 @@
               <div class="greet-big">Ferme du Val Vert</div>
             </div>
           </div>
-          <div class="hero-chip" id="hero-weather"></div>
+          <div class="hero-chips"><div class="hero-chip" id="hero-season"></div><div class="hero-chip" id="hero-weather"></div></div>
         </div>
 
         <div class="home-grid">
@@ -80,6 +81,11 @@
 
         <div class="section-head"><h2>Chiffres clés</h2></div>
         <div class="stats-grid" id="stats-grid"></div>
+
+        <div class="home-grid two">
+          <div class="card" id="orders"></div>
+          <div class="card" id="events"></div>
+        </div>
 
         <div class="home-grid two">
           <div class="card">
@@ -175,6 +181,7 @@
           </div>
           <div class="zone-panel" id="stall-panel"></div>
         </div>
+        <div class="card market-orders" id="market-orders"></div>
         <div class="section-head"><h2>Constructions</h2><span class="muted small">Rien n'est fourni au départ : à vous de les acheter</span></div>
         <div class="upgrades" id="buildings"></div>
         <div class="section-head"><h2>Technologies modernes</h2><span class="muted small">Chères, avec un entretien journalier, mais elles travaillent pour vous</span></div>

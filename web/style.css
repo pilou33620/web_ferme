@@ -610,3 +610,71 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
 .pad-h { font: 800 12px var(--font); fill: #fff; }
 .rotor { animation: spin .5s linear infinite; transform-box: fill-box; transform-origin: center; animation-play-state: paused; }
 .flying .rotor { animation-duration: .12s; animation-play-state: running; }
+.sale-sign.sm { font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+
+/* ---------- saisons ---------- */
+.clock-season { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; font-weight: 700; margin: 2px 0 8px; }
+.hero-chips { position: absolute; right: 24px; top: 24px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.hero-chips .hero-chip { position: static; }
+.season-banner { display: flex; gap: 12px; align-items: flex-start; border-radius: 18px; padding: 12px 14px; margin-bottom: 12px; background: var(--green-soft); }
+.season-banner.s-ete { background: #FBF0D2; }
+.season-banner.s-automne { background: #F8E5D3; }
+.season-banner.s-hiver { background: #E6EFF6; }
+.season-banner .grow { flex: 1; min-width: 0; }
+.season-emo { font-size: 28px; line-height: 1; }
+.season-bar { height: 6px; border-radius: 9px; background: rgba(0,0,0,.08); overflow: hidden; margin: 8px 0 4px; }
+.season-bar i { display: block; height: 100%; background: var(--forest); border-radius: 9px; }
+.crop.off-season { background: var(--bg); }
+.crop.off-season .gain { color: var(--muted); }
+.wx-hero.s-automne .wx-scene { filter: sepia(.28) saturate(1.15) hue-rotate(-12deg); }
+.wx-hero.s-hiver .wx-scene { filter: saturate(.55) brightness(1.06) contrast(.95); }
+.wx-hero.s-ete .wx-scene { filter: saturate(1.08) sepia(.08); }
+
+/* ---------- événements ---------- */
+.events { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto; }
+.events li { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+.events li:first-child { border-top: 0; }
+.events .ev-emo { font-size: 20px; line-height: 1.2; width: 26px; text-align: center; flex: none; }
+.events li.bon b { color: var(--green); }
+.events li.mauvais b { color: var(--red); }
+
+/* ---------- commandes ---------- */
+.order { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: 18px; background: var(--bg); margin-bottom: 8px; }
+.order.ready { background: var(--green-soft); }
+.order .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.order-emo { font-size: 24px; line-height: 1; }
+.order-btns { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.order-price { font-size: 17px; font-weight: 800; letter-spacing: -.02em; }
+.order .pill-tag svg.i { width: 12px; height: 12px; }
+
+/* ---------- atelier ---------- */
+.machine { border: 1.5px solid var(--line); border-radius: 18px; padding: 12px; margin-top: 10px; }
+.machine.on { border-color: #BFD9C4; background: #F7FBF5; }
+.machine.locked { background: var(--bg); border-color: transparent; }
+.machine-top { display: flex; gap: 10px; align-items: flex-start; }
+.machine-top .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.machine-top .btn { white-space: nowrap; }
+.machine-emo { font-size: 26px; line-height: 1; }
+.machine-run { margin: 10px 0 4px; }
+.machine-run .meter-row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.recipe { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; border-top: 1px solid var(--line); padding: 10px 0 2px; margin-top: 10px; }
+.recipe-top { display: flex; gap: 10px; align-items: flex-start; flex: 1; min-width: 220px; }
+.recipe-top .grow { display: flex; flex-direction: column; gap: 4px; }
+.recipe-ins { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 13px; }
+.ing { background: var(--bg); border-radius: 99px; padding: 2px 9px; font-weight: 600; white-space: nowrap; }
+.ing.short { background: var(--red-soft); color: var(--red); }
+.ing.out { background: var(--green-soft); color: var(--green); }
+.recipe-btns { display: flex; gap: 6px; }
+
+/* ---------- modes de jeu ---------- */
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.mode-opt { text-align: left; background: var(--bg); border: 2px solid transparent; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; transition: border-color .15s; }
+.mode-opt:hover { border-color: var(--forest); }
+.mode-opt small { color: var(--muted); font-size: 12px; font-weight: 600; }
+.mode-opt.danger { background: #fff; }
+.mode-opt.danger:hover { border-color: var(--red); }
+@media (max-width: 520px) { .modes { grid-template-columns: 1fr; } }
+.machine-buy { align-self: flex-start; margin-top: 6px; }
+.machine.locked .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.stats-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)) !important; }
+.market-orders { margin-top: 22px; }

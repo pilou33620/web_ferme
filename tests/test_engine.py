@@ -644,6 +644,261 @@ class EngineTest(unittest.TestCase):
         g.advance(120)
         g.view()
 
+    # ---- saisons ----
+    def test_seasons_cycle(self):
+        g = self.g
+        self.assertEqual(g.saison, "printemps")
+        for day, sz in ((8, "ete"), (15, "automne"), (22, "hiver"), (29, "printemps")):
+            self.goto(g, day, 1)
+            self.assertEqual(g.saison, sz)
+        self.assertEqual(g.year, 2)
+        self.assertIn("hiver", g.s["objectifs"])          # premier hiver passé
+        info = g.view()["derive"]["saison"]
+        self.assertEqual((info["annee"], info["jour"], info["prochaine"]), (2, 1, "Été"))
+
+    def test_sowing_out_of_season(self):
+        g = self.g
+        g.s["minute"] = 21 * MIN_PER_DAY + 8 * 60           # jour 22 : l'hiver
+        with self.assertRaises(ActionError):
+            g.act({"type": "semer", "champ": "parcelle_a", "culture": "tomates"})
+        g.act({"type": "semer", "champ": "parcelle_a", "culture": "carottes"})   # rustique
+        g.s["argent"], g.s["stats"]["ventes"] = 9000, 5000
+        g.act({"type": "construire", "batiment": "serre", "champ": "parcelle_b"})
+        g.act({"type": "semer", "champ": "parcelle_b", "culture": "tomates"})    # sous serre, toute l'année
+        self.assertFalse(g.view()["derive"]["en_saison"]["tomates"])
+
+    def test_frost_hurts_fragile_crops(self):
+        g = self.g
+        g.act({"type": "semer", "champ": "parcelle_a", "culture": "tomates"})
+        g.act({"type": "semer", "champ": "parcelle_b", "culture": "carottes"})
+        g.s["meteo"] = {"type": "nuageux", "nom": "Nuageux", "temp": -4}
+        for k in ("parcelle_a", "parcelle_b"):
+            g.s["champs"][k]["humidite"] = 70
+        g.advance(240)
+        tomates, carottes = (g.s["champs"][k]["planches"][0] for k in ("parcelle_a", "parcelle_b"))
+        self.assertLess(tomates["sante"], 100)
+        self.assertEqual(carottes["sante"], 100)
+        self.assertTrue(any("gèle" in j["msg"] for j in g.s["journal"]))
+
+    def test_winter_weather_and_appetite(self):
+        g = self.g
+        herd(g, vaches=2)
+        summer = g.feed_needed()
+        g.s["minute"] = 21 * MIN_PER_DAY + 60
+        self.assertGreater(g.feed_needed(), summer)
+        rng = __import__("random").Random(1)
+        temps = [g._pick_weather(rng, 23) for _ in range(200)]
+        self.assertFalse(any(w["type"] == "canicule" for w in temps))
+        self.assertLess(sum(w["temp"] for w in temps) / 200, 12)
+
+    def test_off_season_prices(self):
+        g = self.g
+        self.assertEqual(g.season_price("tomates"), 2.4)
+        g.s["minute"] = 21 * MIN_PER_DAY + 60
+        self.assertGreater(g.season_price("tomates"), 2.4)
+        self.assertEqual(g.season_price("carottes"), 1.7)
+
+    # ---- atelier ----
+    def test_workshop(self):
+        g = self.g
+        g.s["argent"] = 9000
+        with self.assertRaises(ActionError):                # pas de matériel sans bâtiment
+            g.act({"type": "equiper", "equipement": "cuve_fromage"})
+        g.act({"type": "construire", "batiment": "atelier"})
+        g.act({"type": "equiper", "equipement": "cuve_fromage"})
+        charges = g.charges()
+        self.assertGreaterEqual(charges, 35 + 8 + 4)
+        with self.assertRaises(ActionError):                # pas de lait
+            g.act({"type": "transformer", "recette": "fromage"})
+        with self.assertRaises(ActionError):                # pas de chaudron
+            g.act({"type": "transformer", "recette": "confiture"})
+        g._add("lait", 100, 80, 1.0)
+        g.act({"type": "transformer", "recette": "fromage"})
+        self.assertAlmostEqual(g.s["stock"]["lait"], 20)    # capacité : 8 lots de 10 L
+        with self.assertRaises(ActionError):                # une fournée à la fois
+            g.act({"type": "transformer", "recette": "fromage", "lots": 1})
+        g.advance(8 * 60 + 5)
+        self.assertAlmostEqual(g.s["stock"]["fromage"], 8)
+        self.assertGreater(g.s["qualite"]["fromage"], 80)
+        self.assertGreater(g.s["bio"]["fromage"], 0.95)
+        self.assertIn("transformation", g.s["objectifs"])
+        self.assertTrue(g.view()["derive"]["produits"]["fromage"]["en_vente"])
+
+    def test_workshop_auto_restart_and_multi_inputs(self):
+        g = self.g
+        g.s["argent"] = 9000
+        g.act({"type": "construire", "batiment": "atelier"})
+        g.act({"type": "equiper", "equipement": "autoclave"})
+        g._add("potirons", 10, 70, 1.0)
+        g._add("carottes", 1, 90, 0.0)
+        self.assertEqual(g.max_lots("veloute"), 2)          # limité par les carottes
+        g.act({"type": "atelier_auto", "equipement": "autoclave", "actif": True})
+        g.act({"type": "transformer", "recette": "veloute"})
+        self.assertAlmostEqual(g.s["stock"]["potirons"], 6)
+        g.advance(5 * 60 + 5)
+        self.assertAlmostEqual(g.s["stock"]["veloute"], 2)
+        self.assertLess(g.s["bio"]["veloute"], 1)            # une partie des ingrédients n'était pas bio
+        self.assertIsNone(g.s["atelier"]["equipements"]["autoclave"]["lot"])   # plus de carottes : pas de relance
+
+    # ---- commandes ----
+    def test_orders(self):
+        g = self.g
+        g._new_order(__import__("random").Random(5))
+        o = g.s["commandes"][0]
+        with self.assertRaises(ActionError):
+            g.act({"type": "livrer", "id": o["id"]})
+        g._add(o["produit"], o["qte"] + 1, 95, 1.0)
+        money, rep = g.s["argent"], g.s["reputation"]
+        g.act({"type": "livrer", "id": o["id"]})
+        self.assertEqual(g.s["argent"], money + o["prix"])
+        self.assertGreater(g.s["reputation"], rep)
+        self.assertEqual(g.s["commandes"], [])
+        self.assertIn("commande", g.s["objectifs"])
+
+    def test_orders_expire_and_refuse(self):
+        g = self.g
+        rng = __import__("random").Random(9)
+        g._new_order(rng)
+        g._new_order(rng)
+        a, b = g.s["commandes"]
+        rep = g.s["reputation"]
+        g.act({"type": "refuser", "id": a["id"]})
+        self.assertEqual(g.s["reputation"], rep - 1)
+        g.advance(b["echeance"] - g.s["minute"] + 10)
+        self.assertNotIn(b["id"], [x["id"] for x in g.s["commandes"]])
+        self.assertEqual(g.s["stats"]["commandes_ratees"], 1)
+
+    def test_orders_arrive_over_time(self):
+        g = self.g
+        self.goto(g, 12, 8)
+        self.assertGreater(g.s["prochaine_commande"], 1)
+        self.assertLessEqual(len(g.s["commandes"]), 3)
+        for o in g.view()["derive"]["commandes"]:
+            self.assertIn(o["produit"], g._order_candidates())
+
+    # ---- événements ----
+    def test_random_events(self):
+        g = self.g
+        herd(g, vaches=2, poules=6)
+        g.act({"type": "semer", "champ": "parcelle_a", "culture": "tomates"})
+        rng = __import__("random").Random(0)
+        for _ in range(60):
+            g._random_event(rng)
+        self.assertGreater(len(g.s["evenements"]), 10)
+        self.assertLessEqual(len(g.s["evenements"]), 12)
+        self.assertTrue({"bon", "mauvais"} <= {e["type"] for e in g.s["evenements"]})
+
+    def test_market_effects(self):
+        g = self.g
+        self.goto(g, 2, 9)                                   # mardi, marché ouvert
+        base_c, base_p = g.customers_per_hour() or 1, g.fair_price("tomates")
+        g.s["effets"].append({"id": "foire", "nom": "Foire", "emoji": "🎪", "clients": 1.3, "prix": 1.15,
+                              "fin": g.next_market_end()})
+        self.assertAlmostEqual(g.fair_price("tomates"), base_p * 1.15)
+        self.goto(g, 2, 14)
+        self.assertEqual(g.active_effects(), [])
+
+    def test_breakdown_stops_tech(self):
+        g = self.g
+        g.s["technologies"] = ["desherbeur"]
+        g.s["effets"].append({"id": "panne", "tech": "desherbeur", "nom": "Panne", "emoji": "🔧", "fin": g.s["minute"] + 60})
+        self.assertFalse(g.has_tech("desherbeur"))
+        with self.assertRaises(ActionError):                 # on ne le rachète pas pour autant
+            g.act({"type": "technologie", "tech": "desherbeur"})
+        g.advance(61)
+        self.assertTrue(g.has_tech("desherbeur"))
+
+    # ---- mode libre ----
+    def test_free_mode_after_victory(self):
+        g = self.g
+        g.s["argent"] = 15500
+        g.act({"type": "vitesse", "valeur": 1})            # les objectifs sont vérifiés à chaque action
+        self.assertEqual(g.s["statut"], "gagne")
+        g.act({"type": "continuer"})
+        self.assertEqual((g.s["statut"], g.s["mode"]), ("en_cours", "libre"))
+        g.advance(MIN_PER_DAY)
+        self.assertEqual(g.s["statut"], "en_cours")
+        self.assertIsNone(g.view()["derive"]["objectif_argent"])
+
+    def test_new_free_game(self):
+        g = self.g
+        g.act({"type": "nouvelle_partie", "mode": "libre"})
+        self.assertEqual(g.s["mode"], "libre")
+        g.s["argent"] = 20000
+        g.act({"type": "vitesse", "valeur": 1})
+        self.assertEqual(g.s["statut"], "en_cours")
+        g.s["argent"] = -100
+        g.advance(3 * MIN_PER_DAY)
+        self.assertEqual(g.s["statut"], "perdu")             # la faillite reste possible
+        with self.assertRaises(ActionError):
+            g.act({"type": "nouvelle_partie", "mode": "facile"})
+
+    def test_migrate_v4_save(self):
+        st = json.loads(self.g.dumps())
+        for k in ("mode", "atelier", "commandes", "prochaine_commande", "effets", "evenements", "gel_jour"):
+            del st[k]
+        st["version"] = 4
+        g = Game(st)
+        self.assertEqual(g.s["mode"], "classique")
+        self.assertFalse(g.s["atelier"]["construit"])
+        g.advance(2 * MIN_PER_DAY)
+        json.dumps(g.view())
+
+    def test_long_game_through_winter(self):
+        """Un joueur appliqué traverse une année entière (atelier, commandes, serres) sans faire faillite."""
+        g = self.g
+        g.s["argent"] = 6000
+        herd(g, vaches=2, poules=12, moutons=2, cochons=1)
+        g.act({"type": "construire", "batiment": "atelier"})
+        g.act({"type": "equiper", "equipement": "cuve_fromage"})
+        g.act({"type": "atelier_auto", "equipement": "cuve_fromage", "actif": True})
+        g.s["collecte_lait"] = False
+        for _ in range(28 * 24 * 6):
+            g.advance(10)
+            if g.s["statut"] != "en_cours":
+                break
+            if g.hour % 6 < 0.2 and g.hour >= 5.9:
+                for act in ({"type": "acheter", "article": "foin", "quantite": 400} if g.s["stock"]["foin"] < g.feed_needed() * 4 else None,
+                            {"type": "nourrir"}, {"type": "ramasser"}, {"type": "nettoyer"},
+                            {"type": "caliner", "categorie": "vaches"}, {"type": "soigner"},
+                            {"type": "transformer", "recette": "fromage"}):
+                    try:
+                        if act:
+                            g.act(act)
+                    except ActionError:
+                        pass
+                for o in list(g.s["commandes"]):
+                    try:
+                        g.act({"type": "livrer", "id": o["id"]})
+                    except ActionError:
+                        pass
+            for k, field in g.s["champs"].items():
+                f = field["planches"][0]
+                crop = next(c for c in ("tomates", "carottes", "salades") if g.in_season(c))
+                for act in ({"type": "recolter", "champ": k} if f["etat"] == "mur" else None,
+                            {"type": "preparer", "champ": k} if f["etat"] == "fletri" or (f["etat"] == "vide" and not f["sol_pret"]) else None,
+                            {"type": "semer", "champ": k, "culture": crop} if f["etat"] == "vide" else None,
+                            {"type": "traiter", "champ": k, "traitement": "naturel"} if f["nuisible"] else None,
+                            {"type": "desherber", "champ": k} if f["herbes"] > 40 else None,
+                            {"type": "arroser", "champ": k} if field["humidite"] < 30 else None):
+                    try:
+                        if act:
+                            g.act(act)
+                    except ActionError:
+                        pass
+            if g.market_day() and 12.8 <= g.hour < 12.97:
+                for p in ("oeufs", "laine", "tomates", "carottes", "salades", "fromage", "lait"):
+                    try:
+                        g.act({"type": "vendre", "produit": p})
+                    except ActionError:
+                        pass
+        print(f"\n  → après un an : {g.s['argent']:.0f} €, statut {g.s['statut']}, {g.s['stats']['transformations']} fournées, "
+              f"{g.s['stats']['commandes']} commandes livrées / {g.s['stats']['commandes_ratees']} ratées, "
+              f"{len(g.s['evenements'])} événements récents")
+        self.assertEqual(g.s["statut"], "en_cours")
+        self.assertGreater(g.s["stats"]["transformations"], 5)
+        self.assertIn("hiver", g.s["objectifs"])
+
 
 if __name__ == "__main__":
     unittest.main()

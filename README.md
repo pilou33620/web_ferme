@@ -39,7 +39,29 @@ Le jeu s'ouvre sur le **menu principal**, et le temps reste en pause tant qu'il 
 
 Atteindre **15 000 €** de trésorerie sans faire faillite. Si le compte reste dans le rouge **3 jours de suite**, la banque saisit la ferme.
 
+**Mode libre** : à la création d'une partie, on choisit entre la partie classique et le mode libre (pas d'objectif d'argent, seule la faillite reste possible). Après une victoire, « Continuer en mode libre » garde la ferme et continue sans fin.
+
 - **Temps** : à la vitesse ×1, une seconde réelle vaut 10 minutes de jeu (une journée dure environ 2 min 24 s). Le jeu propose une pause et les vitesses ×1 à ×8.
+- **Saisons** : l'année compte quatre saisons de 7 jours (printemps, été, automne, hiver), affichées dans la barre latérale.
+  - Chaque culture a ses saisons de semis en plein champ (tomates, fraises, maïs, pommes de terre : printemps et été ; potirons jusqu'à l'automne ; carottes et salades presque toute l'année). Sous serre, tout se sème toute l'année.
+  - La pousse est plus rapide l'été (+10 %), plus lente l'automne (−15 %) et l'hiver (−40 %, −10 % sous serre).
+  - La météo suit la saison : canicules et orages l'été, pluie l'automne, froid et neige l'hiver. Quand il gèle, les cultures fragiles en plein champ perdent de la santé ; seules les carottes et les salades résistent.
+  - Les bêtes mangent plus en automne et en hiver (+10 % / +30 % de foin), ne broutent plus l'hiver, les poules pondent moins ; les abeilles ne font pas de miel l'hiver.
+  - Les légumes hors saison se vendent 35 % plus cher ; l'hiver, le lait, les œufs et les produits transformés sont plus recherchés.
+  - La carte et l'écran Météo changent de couleurs selon la saison (herbe sèche l'été, feuillage roux l'automne, givre et neige l'hiver).
+- **Atelier de transformation** (2 500 €, 8 €/jour) : un bâtiment à côté du réservoir, visible sur la carte avec le matériel installé dans la cour (fumée à la cheminée, anneau de progression pendant une fournée). On y achète du matériel :
+
+  | Matériel | Prix | Recettes |
+  |---|---|---|
+  | Cuve à fromage | 1 800 € | 10 L de lait → 1 kg de fromage |
+  | Chaudron en cuivre | 900 € | confiture de fraises, confiture de melon |
+  | Autoclave de conserverie | 1 500 € | sauce tomate, velouté de potiron (potiron + carottes) |
+  | Rouet électrique | 1 200 € | pelotes de laine |
+  | Four à pain | 2 000 € | pain de maïs (maïs + œufs), pain d'épices (miel + œufs) |
+
+  Chaque machine traite une fournée à la fois (de 1 lot à sa capacité), avec un entretien journalier. Les produits finis se gardent longtemps, se vendent plus cher (au marché ou en gros : fromager, boulangère, coopérative), gardent la qualité et la part bio de leurs ingrédients (+6 de qualité). La « relance automatique » relance la même recette à la fin de chaque fournée.
+- **Commandes de clients** : restaurants, cantine, épiceries… passent commande (jusqu'à 3 à la fois) pour ce que la ferme peut produire : une quantité, parfois une qualité minimale ou du bio, avant une date. Livrer rapporte bien plus que le marché et +3 de réputation ; une commande ratée coûte 5 points.
+- **Événements aléatoires** (environ un jour sur trois) : subvention, foin offert par le voisin, essaim sauvage, grêle, sangliers (la clôture les arrête), gelée blanche, fuite au réservoir, panne d'une technologie (24 h), contrôle bio (amende si engrais ou insecticide dans la semaine), blogueuse culinaire et foire agricole (plus de clients au prochain marché), concours agricole, visite d'école, campagne de vaccination, chute des cours. Ils s'affichent sur l'Accueil, avec la saison.
 - **Cultures** : trois parcelles en friche au départ (A, B, C). Sur chacune, on choisit quoi semer : tomates, carottes, salades, pommes de terre, maïs, fraises ou potirons. Chaque culture a sa durée, son prix de graines, son rendement et ses besoins en eau. On arrose avec 600 L puisés dans le réservoir. Quand il pleut, les parcelles en plein champ s'arrosent toutes seules. Il faut récolter à temps, sinon la récolte pourrit. Un sol trop sec fait flétrir les plants.
 - **Soins des cultures** :
   - **Préparer le sol** : une planche en friche, récoltée ou flétrie doit être labourée avant d'être semée. Avec le tracteur, toute la parcelle est labourée d'un coup.
@@ -87,7 +109,7 @@ web/style.css      design system (couleurs, cartes, pilules, anneaux…)
 web/js/icons.js    icônes au trait
 web/js/art.js      illustrations : bannière jour/nuit, avatar, animaux
 web/js/market.js   place du marché : étals, marchands, clients, pigeons et bêtes animés
-web/js/map.js      carte vue du dessus : décor, cultures, serres, éoliennes, réservoir, animaux, tracteur, terrains à vendre, zoom
+web/js/map.js      carte vue du dessus : décor de saison, cultures, serres, éoliennes, réservoir, atelier et son matériel, animaux, tracteur, terrains à vendre, neige, zoom
 web/js/weather.js  écran Météo : paysage animé selon le temps (soleil, nuages, vent, pluie, orage, canicule, éclaircie)
 web/js/app.js      état, rendu des écrans, actions, notifications
 tests/             tests unitaires du moteur
@@ -96,7 +118,7 @@ tests/             tests unitaires du moteur
 API :
 
 - `GET /api/etat` renvoie l'état complet, avec les valeurs calculées dans `derive` et les données de référence dans `ref`.
-- `POST /api/action` attend un JSON `{"type": "...", ...}`. Types possibles : `semer` (avec `champ`, `culture` et `planche`, 0 par défaut), `diviser` (`champ`, `planches` de 1 à 3), `construire` (`batiment` : `eolienne`, `ruche`, ou `serre` avec `champ`), `arroser` (`champ`), `fertiliser` (`champ`, `planche`, `engrais` : `fumier` ou `chimique`), `recolter` (`champ`, `planche`), `technologie` (`tech` : `drone`, `desherbeur`, `semoir` ou `recolteur`), `nourrir`, `soigner`, `vendre` (vente en gros), `etal` (`produit`, puis `actif` et/ou `prix`, `null` = prix conseillé), `collecte` (`actif`), `vendre_animal` (`categorie`, `id` facultatif), `acheter_parcelle` (achète le prochain terrain à vendre), `acheter` (`foin`, `foin_bio` ou un animal), `ameliorer`, `vitesse`, `menu` (`ouvert` : met en pause / reprend), `nouvelle_partie`.
+- `POST /api/action` attend un JSON `{"type": "...", ...}`. Types possibles : `semer` (avec `champ`, `culture` et `planche`, 0 par défaut), `diviser` (`champ`, `planches` de 1 à 3), `construire` (`batiment` : `eolienne`, `ruche`, ou `serre` avec `champ`), `arroser` (`champ`), `fertiliser` (`champ`, `planche`, `engrais` : `fumier` ou `chimique`), `recolter` (`champ`, `planche`), `technologie` (`tech` : `drone`, `desherbeur`, `semoir` ou `recolteur`), `nourrir`, `soigner`, `vendre` (vente en gros), `etal` (`produit`, puis `actif` et/ou `prix`, `null` = prix conseillé), `collecte` (`actif`), `vendre_animal` (`categorie`, `id` facultatif), `acheter_parcelle` (achète le prochain terrain à vendre), `acheter` (`foin`, `foin_bio` ou un animal), `ameliorer`, `vitesse`, `menu` (`ouvert` : met en pause / reprend), `nouvelle_partie` (`mode` : `classique` ou `libre`), `continuer` (après une victoire, passe en mode libre), `construire` avec `batiment` : `atelier`, `equiper` (`equipement`), `transformer` (`recette`, `lots` : nombre ou `"max"`), `atelier_auto` (`equipement`, `actif`), `livrer` et `refuser` (`id` de la commande).
 
 ## Tests
 

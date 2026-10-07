@@ -12,7 +12,8 @@ const FarmMap = (() => {
     parcelle_b: { nom: "Parcelle B", icon: "sprout", box: [20, 312, 450, 158] },
     parcelle_c: { nom: "Parcelle C", icon: "sprout", box: [530, 312, 450, 158] },
     enclos:    { nom: "Animaux",     icon: "fence",  box: [20, 530, 450, 212] },
-    reservoir: { nom: "Eau & stock", icon: "tank",   box: [530, 530, 450, 212] },
+    atelier:   { nom: "Atelier",     icon: "barn",   box: [530, 530, 222, 212] },
+    reservoir: { nom: "Eau & stock", icon: "tank",   box: [760, 530, 220, 212] },
   };
 
   // zones où se promènent les animaux [x1, y1, x2, y2]
@@ -53,18 +54,29 @@ const FarmMap = (() => {
   };
 
   // ------------------------------------------------------------------ décor
-  function tree(x, y, r, c = "#4E9A3A") {
+  // couleurs du décor selon la saison : herbe verte au printemps, sèche l'été, rousse l'automne, givrée l'hiver
+  const PAL = {
+    printemps: { grass: "#A9D282", tuft: "#93C46B", lawn: "#9FD17C", field: "#8CC067", pen: "#9BCB72", plot: "#B4D98F", tree: ["#4E9A3A", "#5DA548"] },
+    ete:       { grass: "#B5D07A", tuft: "#9DBB5E", lawn: "#A8CF76", field: "#97BF5E", pen: "#A6C96A", plot: "#BFD98A", tree: ["#4A8F35", "#5A9C3F"] },
+    automne:   { grass: "#C3C27C", tuft: "#AFA45C", lawn: "#BAC47A", field: "#A9B467", pen: "#B2BB70", plot: "#CFCB8A", tree: ["#D9822E", "#C4552B"] },
+    hiver:     { grass: "#DCE5DE", tuft: "#C3D0C8", lawn: "#D3DED6", field: "#C8D6C9", pen: "#D0DCD2", plot: "#E3EAE4", tree: ["#6E8B78", "#7F9A86"] },
+  };
+  let season = "printemps";
+  const pal = () => PAL[season] || PAL.printemps;
+
+  function tree(x, y, r, c = pal().tree[0]) {
     return `<g><circle cx="${x + 3}" cy="${y + 4}" r="${r}" fill="#000" opacity=".12"/>
       <circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/><circle cx="${x - r * .3}" cy="${y - r * .3}" r="${r * .45}" fill="#fff" opacity=".13"/></g>`;
   }
-  function bush(x, y, r) { return `<circle cx="${x}" cy="${y}" r="${r}" fill="#5DA548"/><circle cx="${x - r * .3}" cy="${y - r * .3}" r="${r * .4}" fill="#fff" opacity=".12"/>`; }
+  function bush(x, y, r) { return `<circle cx="${x}" cy="${y}" r="${r}" fill="${pal().tree[1]}"/><circle cx="${x - r * .3}" cy="${y - r * .3}" r="${r * .4}" fill="#fff" opacity=".12"/>`; }
 
   function staticLayer() {
     let s = "";
     // herbe + texture
-    s += `<rect width="${W}" height="${H}" fill="#A9D282"/>`;
+    const P = pal();
+    s += `<rect width="${W}" height="${H}" fill="${P.grass}"/>`;
     for (let i = 0; i < 160; i++) {
-      s += `<path d="M${seeded(i) * W} ${seeded(i + 999) * H} l2 -5 l2 5" stroke="#93C46B" stroke-width="1.4" fill="none"/>`;
+      s += `<path d="M${seeded(i) * W} ${seeded(i + 999) * H} l2 -5 l2 5" stroke="${P.tuft}" stroke-width="1.4" fill="none"/>`;
     }
     // routes
     const road = "#EADBBD", edge = "#D8C59E";
@@ -81,7 +93,7 @@ const FarmMap = (() => {
     for (let y = 30; y < H; y += 60) s += `<circle cx="512" cy="${y}" r="4.5" fill="#4C93D1" stroke="#fff" stroke-width="1.5"/>`;
 
     // ---- maison
-    s += `<rect x="24" y="24" width="442" height="224" rx="26" fill="#9FD17C" stroke="#4E8F3B" stroke-width="10"/>`;
+    s += `<rect x="24" y="24" width="442" height="224" rx="26" fill="${P.lawn}" stroke="#4E8F3B" stroke-width="10"/>`;
     s += `<rect x="128" y="168" width="64" height="74" fill="#E9DCC2"/>`;
     for (let i = 0; i < 4; i++) s += `<rect x="${146 + (i % 2) * 14}" y="${178 + i * 16}" width="18" height="10" rx="4" fill="#D3C3A4"/>`;
     s += `<rect x="360" y="120" width="70" height="122" fill="#DCCFB4"/>`;
@@ -98,7 +110,7 @@ const FarmMap = (() => {
     for (let i = 0; i < 12; i++) s += `<circle cx="${10 + (i % 4) * 15}" cy="${12 + Math.floor(i / 4) * 14}" r="5" fill="${["#F2C14E", "#E8695A", "#F5F0E6", "#B07CD8"][i % 4]}"/>`;
     s += `</g>`;
     s += `<g transform="translate(384 196)"><rect x="-12" y="-21" width="24" height="42" rx="8" fill="#2F6FB5"/><rect x="-9" y="-12" width="18" height="10" rx="3" fill="#BFE0F7"/><rect x="-9" y="6" width="18" height="8" rx="3" fill="#BFE0F7"/></g>`;
-    s += tree(48, 58, 18) + tree(298, 140, 15, "#5DA548");
+    s += tree(48, 58, 18) + tree(298, 140, 15, P.tree[1]);
     for (let x = 220; x < 290; x += 18) s += bush(x, 222, 8);
     // cour gravillonnée où le tracteur dort la nuit
     s += `<rect x="290" y="204" width="72" height="54" rx="8" fill="#E2D3B2"/><path d="M296 214h60M296 224h60M296 234h60M296 244h60" stroke="#D3C19B" stroke-width="1.5" stroke-dasharray="3 4"/>`;
@@ -106,18 +118,18 @@ const FarmMap = (() => {
     // ---- haies des champs
     for (const k of FIELDS) {
       const [x, y, w, h] = ZONES[k].box;
-      s += `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="#8CC067" stroke="#4E8F3B" stroke-width="10"/>`;
+      s += `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="${P.field}" stroke="#4E8F3B" stroke-width="10"/>`;
     }
     // bosquets dans les coins des rangées de terrains pas encore achetés
     for (let i = 0; i < EXTRA_SLOTS.length; i++) {
       const [x, y, w, h] = slotBox(i);
       if (y + h > H || ZONES[EXTRA_SLOTS[i]] || (sale && sale.cle === EXTRA_SLOTS[i])) continue;
-      s += `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="#B4D98F"/>`;
-      for (let j = 0; j < 7; j++) s += tree(x + 40 + seeded(i * 9 + j) * (w - 80), y + 30 + seeded(i * 7 + j + 3) * (h - 60), 10 + seeded(j + i) * 9, j % 2 ? "#5DA548" : "#4E9A3A");
+      s += `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="${P.plot}"/>`;
+      for (let j = 0; j < 7; j++) s += tree(x + 40 + seeded(i * 9 + j) * (w - 80), y + 30 + seeded(i * 7 + j + 3) * (h - 60), 10 + seeded(j + i) * 9, P.tree[j % 2 ? 1 : 0]);
     }
 
     // ---- enclos
-    s += `<rect x="24" y="534" width="442" height="204" rx="22" fill="#9BCB72"/>`;
+    s += `<rect x="24" y="534" width="442" height="204" rx="22" fill="${P.pen}"/>`;
     s += `<rect x="30" y="540" width="430" height="192" rx="18" fill="none" stroke="#9A6B3E" stroke-width="4" stroke-dasharray="2 9" stroke-linecap="round"/>`;
     s += `<rect x="30" y="540" width="430" height="192" rx="18" fill="none" stroke="#B58553" stroke-width="2"/>`;
     s += `<g transform="translate(44 550)"><rect x="5" y="6" width="130" height="66" fill="#000" opacity=".14"/><rect width="128" height="62" fill="#C33A30"/><path d="M0 31H128" stroke="#9E2C24" stroke-width="3"/><path d="M0 0L20 31L0 62M128 0L108 31L128 62" stroke="#A9322A" stroke-width="2" fill="none"/><rect x="54" y="20" width="20" height="20" fill="#9EA3A8" stroke="#7E848A" stroke-width="2"/><path d="M54 20l20 20M74 20l-20 20" stroke="#7E848A" stroke-width="2"/></g>`;
@@ -133,12 +145,12 @@ const FarmMap = (() => {
     s += tree(452, 552, 12);
 
     // ---- réservoir & stockage
-    s += `<rect x="534" y="534" width="442" height="204" rx="22" fill="#C9CCC4"/>`;
-    s += `<path d="M534 600H976M534 670H976M640 534V738M760 534V738M880 534V738" stroke="#BABDB4" stroke-width="1.5"/>`;
+    s += `<rect x="764" y="534" width="212" height="204" rx="22" fill="#C9CCC4"/>`;
+    s += `<path d="M764 600H976M764 670H976M820 534V738M880 534V738" stroke="#BABDB4" stroke-width="1.5"/>`;
     s += `<g transform="translate(884 548)"><rect x="5" y="6" width="80" height="176" rx="6" fill="#000" opacity=".14"/><rect width="80" height="176" rx="6" fill="#9AA1A8"/>`;
     for (let i = 1; i < 12; i++) s += `<path d="M${i * 6.6} 0V176" stroke="#868D94" stroke-width="1.5"/>`;
     s += `<path d="M40 0V176" stroke="#6F767D" stroke-width="3"/></g>`;
-    s += `<g transform="translate(840 700)"><rect width="30" height="24" rx="4" fill="#5E6B78"/><circle cx="15" cy="12" r="6" fill="#8FB7D6"/></g>`;
+    s += `<g transform="translate(864 716)"><rect width="20" height="16" rx="3" fill="#5E6B78"/><circle cx="10" cy="8" r="4" fill="#8FB7D6"/></g>`;
     return s;
   }
 
@@ -325,7 +337,7 @@ const FarmMap = (() => {
     let s = "";
     TURBINE_SLOTS.forEach(([x, y], i) => {
       if (i < n) s += turbineSVG(x, y, wind);
-      else s += i === 0 ? tree(330, 60, 22) + tree(366, 82, 16, "#5DA548") : tree(440, 50, 14);
+      else s += i === 0 ? tree(330, 60, 22) + tree(366, 82, 16, pal().tree[1]) : tree(440, 50, 14);
     });
     return s;
   }
@@ -333,7 +345,7 @@ const FarmMap = (() => {
   // ------------------------------------------------------------------ réservoir
   function tankSVG(res, ups) {
     const frac = res.niveau / res.capacite;
-    const tanks = ups.includes("reservoir") ? [[630, 610, 58], [770, 610, 58], [700, 700, 34]] : [[640, 636, 70], [790, 636, 70]];
+    const tanks = ups.includes("reservoir") ? [[816, 588, 38], [816, 688, 38]] : [[816, 592, 32], [816, 684, 32]];
     let s = "";
     for (const [cx, cy, r] of tanks) {
       const circ = 2 * Math.PI * (r + 7);
@@ -351,12 +363,99 @@ const FarmMap = (() => {
     return s;
   }
 
+  // ------------------------------------------------------------------ atelier de transformation
+  // emplacements du matériel dans la cour, devant le bâtiment
+  const KIT_SLOTS = { cuve_fromage: [568, 676], chaudron: [607, 708], autoclave: [646, 676], rouet: [685, 708], four: [724, 676] };
+  function kitSVG(eq, run) {
+    const spin = (dur) => (run ? `<animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="${dur}s" repeatCount="indefinite"/>` : "");
+    if (eq === "cuve_fromage") {
+      return `<circle cx="2" cy="3" r="16" fill="#000" opacity=".14"/><circle r="16" fill="#C9D2D9" stroke="#8E9AA4" stroke-width="2"/>
+        <circle r="12" fill="#F3EBD3"/><g><path d="M-9 0H9" stroke="#8E9AA4" stroke-width="2.4" stroke-linecap="round"/>${spin(2.4)}</g>
+        <circle cx="15" cy="12" r="6" fill="#F2C14E" stroke="#C99A2F" stroke-width="1.2"/><circle cx="15" cy="12" r="2.4" fill="#E2B13B"/>`;
+    }
+    if (eq === "chaudron") {
+      return `${run ? `<circle r="19" fill="none" stroke="#F29B4B" stroke-width="3" stroke-dasharray="3 4"><animate attributeName="opacity" values="1;.4;1" dur=".8s" repeatCount="indefinite"/></circle>` : ""}
+        <circle cx="2" cy="3" r="15" fill="#000" opacity=".14"/><circle r="15" fill="#C27237" stroke="#8E4D20" stroke-width="2"/>
+        <circle r="11" fill="#B3263A"/><circle cx="-3" cy="-3" r="3" fill="#D9485C" opacity=".8"/>
+        ${run ? `<circle cx="3" cy="2" r="1.8" fill="#F07A8A"><animate attributeName="r" values="0;2.6;0" dur="1.1s" repeatCount="indefinite"/></circle>` : ""}`;
+    }
+    if (eq === "autoclave") {
+      return `<rect x="-11" y="-14" width="26" height="32" rx="8" fill="#000" opacity=".14"/><rect x="-13" y="-16" width="24" height="32" rx="8" fill="#AEB8C0" stroke="#7F8B95" stroke-width="2"/>
+        <circle cx="-1" cy="-6" r="4.5" fill="#fff" stroke="#7F8B95" stroke-width="1.2"/><path d="M-1 -6l2.4 -2" stroke="#D6544B" stroke-width="1.4"/>
+        ${[["#D9382F", 16, -8], ["#EE8A2E", 16, 2], ["#D9382F", 16, 12]].map(([c, x, y]) => `<circle cx="${x}" cy="${y}" r="4" fill="${c}"/><circle cx="${x}" cy="${y}" r="2.2" fill="#E9E2D0"/>`).join("")}
+        ${run ? `<circle cx="-1" cy="-20" r="3" fill="#fff" opacity=".7"><animate attributeName="cy" values="-18;-30" dur="1.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".8;0" dur="1.4s" repeatCount="indefinite"/></circle>` : ""}`;
+    }
+    if (eq === "rouet") {
+      return `<circle cx="2" cy="3" r="14" fill="#000" opacity=".12"/><circle r="13" fill="none" stroke="#8A5A35" stroke-width="3"/>
+        <g stroke="#A8784E" stroke-width="1.6"><path d="M-12 0H12M0 -12V12M-8.5 -8.5L8.5 8.5M8.5 -8.5L-8.5 8.5"/>${spin(1.6)}</g>
+        <circle r="3" fill="#6E4527"/><circle cx="15" cy="11" r="6" fill="#F5F0E6" stroke="#D8CFBF" stroke-width="1.2"/>
+        <path d="M11 9q4 4 8 1" stroke="#D8CFBF" stroke-width="1" fill="none"/>`;
+    }
+    // four à pain : dôme de briques
+    return `${run ? `<circle r="22" fill="#F7A440" opacity=".35"><animate attributeName="opacity" values=".15;.45;.15" dur="1.6s" repeatCount="indefinite"/></circle>` : ""}
+      <circle cx="2" cy="3" r="16" fill="#000" opacity=".14"/><circle r="16" fill="#B5533C" stroke="#8E3B29" stroke-width="2"/>
+      <path d="M-11 -5H11M-13 3H13M-6 -13V-5M6 -13V-5M0 -5V3M-7 3V11M7 3V11" stroke="#9E432F" stroke-width="1.2"/>
+      <rect x="-7" y="10" width="14" height="8" rx="3" fill="${run ? "#F29B4B" : "#3A2A22"}"/>`;
+  }
+  function workshopSVG(state) {
+    const at = state.atelier, [x, y, w, h] = ZONES.atelier.box;
+    const cx = x + w / 2, cy = y + h / 2;
+    if (!at.construit) {
+      let s = `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="22" fill="${pal().plot}"/>`;
+      s += `<rect x="${x + 14}" y="${y + 14}" width="${w - 28}" height="${h - 28}" rx="16" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="10 9" opacity=".9"/>`;
+      for (const [px, py] of [[x + 14, y + 14], [x + w - 14, y + 14], [x + 14, y + h - 14], [x + w - 14, y + h - 14]]) s += `<circle cx="${px}" cy="${py}" r="5" fill="#B58553" stroke="#fff" stroke-width="2"/>`;
+      s += `<g transform="translate(${cx} ${cy + 14})"><rect x="-3" y="0" width="6" height="30" fill="#7A5434"/>
+        <rect x="-50" y="-34" width="100" height="40" rx="6" fill="#C89B62" stroke="#8E6638" stroke-width="2"/>
+        <text x="0" y="-16" text-anchor="middle" class="sale-sign">ATELIER</text><text x="0" y="-3" text-anchor="middle" class="sale-sign sm">à construire</text></g>`;
+      s += `<g class="sale-cta"><circle cx="${cx}" cy="${cy - 52}" r="20" fill="#fff" opacity=".95"/>
+        <path d="M${cx - 8} ${cy - 52}h16M${cx} ${cy - 60}v16" stroke="#2F7A4B" stroke-width="4" stroke-linecap="round"/>
+        <animate attributeName="opacity" values="1;.7;1" dur="2.4s" repeatCount="indefinite"/></g>`;
+      return s;
+    }
+    const prog = state.derive.atelier, owned = at.equipements;
+    const running = Object.values(owned).some((m) => m.lot);
+    // cour pavée
+    let s = `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="22" fill="#DCD4C3"/>`;
+    for (let i = 0; i < 9; i++) s += `<path d="M${x + 12} ${y + 118 + i * 11}H${x + w - 12}" stroke="#CFC6B2" stroke-width="1.2"/>`;
+    // bâtiment : toit à quatre pans en ardoise, verrières, cheminée
+    const bx = x + 16, by = y + 16, bw = w - 32, bh = 92;
+    s += `<rect x="${bx + 6}" y="${by + 8}" width="${bw}" height="${bh}" fill="#000" opacity=".14"/>
+      <path d="M${bx} ${by}H${bx + bw}V${by + bh}H${bx}Z" fill="#5E7486"/>
+      <path d="M${bx} ${by}L${bx + 40} ${by + bh / 2}L${bx} ${by + bh}Z M${bx + bw} ${by}L${bx + bw - 40} ${by + bh / 2}L${bx + bw} ${by + bh}Z" fill="#526676"/>
+      <path d="M${bx} ${by}L${bx + 40} ${by + bh / 2}H${bx + bw - 40}L${bx + bw} ${by}Z" fill="#6D8597"/>
+      <path d="M${bx + 40} ${by + bh / 2}H${bx + bw - 40}" stroke="#435564" stroke-width="3"/>
+      <rect x="${bx + 56}" y="${by + 14}" width="22" height="14" rx="2" fill="#BFE0F7" opacity=".85"/><rect x="${bx + 96}" y="${by + 14}" width="22" height="14" rx="2" fill="#BFE0F7" opacity=".85"/>
+      <rect x="${bx + bw - 34}" y="${by + 58}" width="14" height="14" fill="#8B8E91"/><rect x="${bx + bw - 31}" y="${by + 61}" width="8" height="8" fill="#4D5054"/>
+      <rect x="${cx - 14}" y="${by + bh - 2}" width="28" height="8" rx="2" fill="#7C5136"/>`;
+    if (running) {
+      for (let i = 0; i < 3; i++) {
+        s += `<circle cx="${bx + bw - 27}" cy="${by + 64}" r="5" fill="#EEF0F2"><animate attributeName="cy" values="${by + 64};${by + 20}" dur="2.6s" begin="-${(i * .85).toFixed(2)}s" repeatCount="indefinite"/>
+          <animate attributeName="r" values="4;11" dur="2.6s" begin="-${(i * .85).toFixed(2)}s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values=".85;0" dur="2.6s" begin="-${(i * .85).toFixed(2)}s" repeatCount="indefinite"/></circle>`;
+      }
+    }
+    // le matériel installé (ou son emplacement vide)
+    for (const [eq, [ex, ey]] of Object.entries(KIT_SLOTS)) {
+      const m = owned[eq];
+      if (!m) {
+        s += `<g transform="translate(${ex} ${ey})" opacity=".55"><rect x="-15" y="-15" width="30" height="30" rx="8" fill="none" stroke="#A89E88" stroke-width="2" stroke-dasharray="4 4"/>
+          <path d="M-5 0h10M0 -5v10" stroke="#A89E88" stroke-width="2" stroke-linecap="round"/></g>`;
+        continue;
+      }
+      const run = !!m.lot, p = run ? (prog[eq] ? prog[eq].progression : 0) / 100 : 0, circ = 2 * Math.PI * 21;
+      s += `<g transform="translate(${ex} ${ey})">${kitSVG(eq, run)}
+        ${run ? `<circle r="21" fill="none" stroke="#fff" stroke-width="3.5" opacity=".7"/><circle r="21" fill="none" stroke="#2F7A4B" stroke-width="3.5" stroke-linecap="round"
+          stroke-dasharray="${(circ * p).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90)"/>` : ""}</g>`;
+    }
+    return s;
+  }
+
   // ------------------------------------------------------------------ terrain à vendre
   function saleSVG() {
     if (!sale) return "";
     const [x, y, w, h] = ZONES.a_vendre.box;
     const cx = x + w / 2, cy = y + h / 2;
-    let s = `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="#C3E09F"/>`;
+    let s = `<rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${h - 8}" rx="24" fill="${pal().plot}"/>`;
     for (let i = 0; i < 40; i++) s += `<path d="M${x + 20 + seeded(i + 300) * (w - 40)} ${y + 20 + seeded(i + 600) * (h - 40)} l2 -5 l2 5" stroke="#9FCB78" stroke-width="1.4" fill="none"/>`;
     s += `<rect x="${x + 10}" y="${y + 10}" width="${w - 20}" height="${h - 20}" rx="20" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="10 9" opacity=".9"/>`;
     for (const [px, py] of [[x + 10, y + 10], [x + w - 10, y + 10], [x + 10, y + h - 10], [x + w - 10, y + h - 10]]) {
@@ -399,7 +498,8 @@ const FarmMap = (() => {
     layers.fields.innerHTML = "";
     for (const k of FIELDS) { layers[k] = el("g", {}, layers.fields); delete cache[k]; }
     layers.sale.innerHTML = saleSVG();
-    for (const id of ["map-heat", "map-night"]) svg.querySelector(`#${id}`).setAttribute("height", H);
+    for (const id of ["map-heat", "map-night", "map-frost"]) svg.querySelector(`#${id}`).setAttribute("height", H);
+    delete cache.wind; delete cache.workshop;
     if (focused && !ZONES[focused]) focused = null;
     setVB(boxFor(focused));
     vehicles.forEach((v) => v.reset());
@@ -826,12 +926,18 @@ const FarmMap = (() => {
     layers.wind = el("g", {}, svg);
     layers.hives = el("g", {}, svg);
     layers.tank = el("g", {}, svg);
+    layers.workshop = el("g", {}, svg);
     layers.animals = el("g", {}, svg);
     layers.tractor = el("g", { "pointer-events": "none" }, svg);
     layers.puffs = el("g", { "pointer-events": "none" }, svg);
     layers.drone = el("g", { "pointer-events": "none" }, svg);
     layers.weather = el("g", { "pointer-events": "none" }, svg);
     layers.weather.innerHTML = `<rect id="map-heat" width="${W}" height="${H}" fill="#FFB347" opacity="0"/>
+      <rect id="map-frost" width="${W}" height="${H}" fill="#EAF3FA" opacity="0"/>
+      <g id="map-snow" opacity="0" fill="#fff">${Array.from({ length: 140 }, (_, i) => {
+        const RH = BASE_H + 3 * ROW_H, x = (i * 137) % W, y = (i * 59) % RH, d = (4 + (i % 7) * .6).toFixed(1), r = 1.6 + (i % 3) * .7;
+        return `<circle cx="${x}" cy="${y}" r="${r}"><animateTransform attributeName="transform" type="translate" values="0 -${RH};${(i % 2 ? 14 : -14)} -${RH / 2};0 0" dur="${d}s" repeatCount="indefinite"/></circle>`;
+      }).join("")}</g>
       <rect id="map-night" width="${W}" height="${H}" fill="#0E1A33" opacity="0"/>
       <g id="map-rain" opacity="0" stroke="#E8F2FA" stroke-width="2" stroke-linecap="round">${Array.from({ length: 170 }, (_, i) => {
         const RH = BASE_H + 3 * ROW_H;   // la pluie couvre la carte même agrandie au maximum
@@ -849,7 +955,8 @@ const FarmMap = (() => {
 
   function update(state) {
     const extras = Object.keys(state.champs).filter((k) => !BASE_FIELDS.includes(k)).sort();
-    const sig = `${extras.join()}|${state.derive.terrain_a_vendre ? state.derive.terrain_a_vendre.cle : ""}`;
+    season = state.derive.saison ? state.derive.saison.id : "printemps";
+    const sig = `${extras.join()}|${state.derive.terrain_a_vendre ? state.derive.terrain_a_vendre.cle : ""}|${season}`;
     if (sig !== layoutSig) { layoutSig = sig; relayout(state); cache.labels = null; }
     else if (sale && state.derive.terrain_a_vendre && sale.prix !== state.derive.terrain_a_vendre.prix) { sale = state.derive.terrain_a_vendre; layers.sale.innerHTML = saleSVG(); }
     gameRunning = state.vitesse > 0 && !state.menu;
@@ -859,7 +966,7 @@ const FarmMap = (() => {
       const sig = `${f.serre}|${Math.round(f.humidite / 8)}|${f.humidite < 18}|${f.humidite > 75}|` + f.planches.map((b) => `${b.etat}${b.culture}${Math.round(b.croissance / 4)}`).join(",");
       if (cache[k] !== sig) { cache[k] = sig; layers[k].innerHTML = fieldSVG(k, f); }
     }
-    const wsig = `${state.eoliennes}|${state.derive.vent}`;
+    const wsig = `${state.eoliennes}|${state.derive.vent}|${season}`;
     if (cache.wind !== wsig) { cache.wind = wsig; layers.wind.innerHTML = windSVG(state.eoliennes, state.derive.vent); }
     const bees = (state.ruches || 0) > 0 && !state.derive.pluie && ART.nightAmount(state.derive.heure_dec) < .5;
     const hsig = `${state.ruches}|${bees}`;
@@ -873,11 +980,17 @@ const FarmMap = (() => {
     }
     const tsig = `${Math.round(state.reservoir.niveau / state.reservoir.capacite * 60)}|${state.ameliorations.join()}`;
     if (cache.tank !== tsig) { cache.tank = tsig; layers.tank.innerHTML = tankSVG(state.reservoir, state.ameliorations); }
+    const at = state.atelier, asig = `${at.construit}|${season}|` + Object.entries(at.equipements).map(([k, m]) =>
+      `${k}${m.lot ? Math.round((state.derive.atelier[k] || {}).progression / 4) : "-"}`).join(",");
+    if (cache.workshop !== asig) { cache.workshop = asig; layers.workshop.innerHTML = workshopSVG(state); }
     syncHerd(state.animaux);
     const h = state.derive.heure_dec, w = state.meteo.type;
     night = ART.nightAmount(h);
     svg.querySelector("#map-night").setAttribute("opacity", (night * .42).toFixed(2));
-    svg.querySelector("#map-rain").setAttribute("opacity", w === "pluie" || w === "orage" ? .6 : 0);
+    const wet = w === "pluie" || w === "orage", snow = wet && state.meteo.nom === "Neige";
+    svg.querySelector("#map-rain").setAttribute("opacity", wet && !snow ? .6 : 0);
+    svg.querySelector("#map-snow").setAttribute("opacity", snow ? .9 : 0);
+    svg.querySelector("#map-frost").setAttribute("opacity", season === "hiver" ? (state.derive.gel ? .28 : .14) : 0);
     svg.querySelector("#map-heat").setAttribute("opacity", w === "canicule" && night < .5 ? .08 : 0);
     upgraded = state.ameliorations.includes("tracteur");
     vehicles.forEach((v) => v.update(state));

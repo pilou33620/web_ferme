@@ -37,27 +37,58 @@ FORECAST_DAYS = 6             # prévisions : demain + 5 jours (7 jours avec auj
 MAX_BEDS = 3                  # une parcelle se divise en 1 à 3 planches, chacune avec sa culture
 ASSOCIATION = 1.10            # association de cultures : +10 % de récolte quand une parcelle mélange 2 cultures ou plus
 
+# --- Saisons -----------------------------------------------------------------
+# L'année compte quatre saisons de 7 jours (le jour 1 est le premier lundi du printemps).
+# `pousse` : vitesse de pousse en plein champ (`serre` : sous serre) ; `temp` : écart de température ;
+# `ration` : appétit des bêtes ; `prod` : production animale ; `miel` : activité des abeilles ;
+# `pre` : herbe à brouter ; `meteo` : poids des types de temps.
+SAISON_JOURS = 7
+SAISONS = {
+    "printemps": {"nom": "Printemps", "emoji": "🌸", "pousse": 1.0, "serre": 1.0, "temp": -5, "ration": 1.0,
+                  "prod": {"laine": 1.3}, "miel": 1.0, "pre": True,
+                  "meteo": {"soleil": 34, "nuageux": 28, "pluie": 26, "orage": 8, "canicule": 4},
+                  "desc": "Tout repart : c'est la saison des semis. Gare aux gelées tardives."},
+    "ete":       {"nom": "Été", "emoji": "☀️", "pousse": 1.1, "serre": 1.0, "temp": 1, "ration": 1.0,
+                  "prod": {"laine": 0.8}, "miel": 1.25, "pre": True,
+                  "meteo": {"soleil": 44, "nuageux": 17, "pluie": 11, "orage": 11, "canicule": 17},
+                  "desc": "Chaleur et orages : arrosez, récoltez vite, les abeilles s'activent."},
+    "automne":   {"nom": "Automne", "emoji": "🍂", "pousse": 0.85, "serre": 1.0, "temp": -6, "ration": 1.1,
+                  "prod": {"oeufs": 0.85}, "miel": 0.5, "pre": True,
+                  "meteo": {"soleil": 24, "nuageux": 34, "pluie": 32, "orage": 10, "canicule": 0},
+                  "desc": "Pluies et récoltes de fin de saison : préparez l'hiver, remplissez l'atelier."},
+    "hiver":     {"nom": "Hiver", "emoji": "❄️", "pousse": 0.6, "serre": 0.9, "temp": -14, "ration": 1.3,
+                  "prod": {"oeufs": 0.6}, "miel": 0.0, "pre": False,
+                  "meteo": {"soleil": 28, "nuageux": 40, "pluie": 30, "orage": 2, "canicule": 0},
+                  "desc": "Le gel guette : seules les cultures rustiques tiennent dehors. Les serres et l'atelier font vivre la ferme."},
+}
+SAISON_ORDRE = list(SAISONS)
+HORS_SAISON = 1.35            # un légume hors saison se vend plus cher
+GEL_DEGATS = 0.03             # santé perdue par minute de gel par une culture fragile en plein champ
+
 # Cultures au choix. `soif` multiplie l'évaporation ; `serre` = culture réservée aux serres.
+# `saisons` : quand on peut la semer en plein champ (sous serre, toute l'année) ; `rustique` : résiste au gel.
 # Le produit récolté porte la même clé que la culture.
 CROPS = {
     "tomates":  {"nom": "Tomates", "emoji": "🍅", "type": "légume", "jours": 4.0, "rendement": 260,
-                 "graines": 60, "prix": 2.4, "soif": 1.1},
+                 "graines": 60, "prix": 2.4, "soif": 1.1, "saisons": ["printemps", "ete"]},
     "carottes": {"nom": "Carottes", "emoji": "🥕", "type": "légume", "jours": 3.0, "rendement": 230,
-                 "graines": 40, "prix": 1.7, "soif": 1.0},
+                 "graines": 40, "prix": 1.7, "soif": 1.0, "saisons": ["printemps", "ete", "automne", "hiver"],
+                 "rustique": True},
     "salades":  {"nom": "Salades", "emoji": "🥬", "type": "légume", "jours": 2.0, "rendement": 150,
-                 "graines": 30, "prix": 2.2, "soif": 1.2},
+                 "graines": 30, "prix": 2.2, "soif": 1.2, "saisons": ["printemps", "automne", "hiver"],
+                 "rustique": True},
     "pommes_de_terre": {"nom": "Pommes de terre", "emoji": "🥔", "type": "légume", "jours": 5.0,
-                 "rendement": 480, "graines": 50, "prix": 1.0, "soif": 0.7},
+                 "rendement": 480, "graines": 50, "prix": 1.0, "soif": 0.7, "saisons": ["printemps", "ete"]},
     "mais":     {"nom": "Maïs", "emoji": "🌽", "type": "céréale", "jours": 5.0, "rendement": 340,
-                 "graines": 70, "prix": 0.9, "soif": 1.0},
+                 "graines": 70, "prix": 0.9, "soif": 1.0, "saisons": ["printemps", "ete"]},
     "fraises":  {"nom": "Fraises", "emoji": "🍓", "type": "fruit", "jours": 4.0, "rendement": 120,
-                 "graines": 90, "prix": 6.0, "soif": 1.3},
+                 "graines": 90, "prix": 6.0, "soif": 1.3, "saisons": ["printemps", "ete"]},
     "potirons": {"nom": "Potirons", "emoji": "🎃", "type": "légume", "jours": 6.0, "rendement": 400,
-                 "graines": 60, "prix": 1.5, "soif": 0.9},
+                 "graines": 60, "prix": 1.5, "soif": 0.9, "saisons": ["printemps", "ete", "automne"]},
     "melons":   {"nom": "Melons", "emoji": "🍈", "type": "fruit", "jours": 5.0, "rendement": 240,
-                 "graines": 120, "prix": 3.8, "soif": 1.2, "serre": True},
+                 "graines": 120, "prix": 3.8, "soif": 1.2, "serre": True, "saisons": ["printemps", "ete"]},
     "poivrons": {"nom": "Poivrons", "emoji": "🫑", "type": "légume", "jours": 4.0, "rendement": 180,
-                 "graines": 100, "prix": 4.2, "soif": 1.1, "serre": True},
+                 "graines": 100, "prix": 4.2, "soif": 1.1, "serre": True, "saisons": ["ete", "automne"]},
 }
 
 ANIMALS = {
@@ -105,7 +136,61 @@ ITEMS = {
     "miel":   {"nom": "Miel", "unite": "kg", "prix": 11.0, "perime": 0, "attrait": 1.8, "panier": (0.5, 1), "grossiste": "boulanger"},
     "fumier": {"nom": "Fumier", "unite": "kg", "prix": 0.08, "perime": 0, "attrait": 0.4, "panier": (5, 20), "grossiste": "fleuriste"},
 }
-EMOJI = {"lait": "🥛", "oeufs": "🥚", "laine": "🧶", "miel": "🍯", "fumier": "💩"}
+
+# --- Atelier de transformation ---------------------------------------------------
+# Le bâtiment, puis le matériel qu'on y installe. Chaque machine traite une fournée à la fois,
+# de 1 lot jusqu'à sa `capacite` ; une fournée dure le temps de la recette, quel que soit le nombre de lots.
+ATELIER = {"nom": "Atelier de transformation", "prix": 2500, "entretien": 8,
+           "desc": "Un bâtiment carrelé à côté du réservoir. Installez-y du matériel pour transformer "
+                   "vos récoltes et votre lait en produits qui se gardent et se vendent plus cher."}
+EQUIPEMENTS = {
+    "cuve_fromage": {"nom": "Cuve à fromage", "emoji": "🧀", "prix": 1800, "entretien": 4, "capacite": 8,
+                     "desc": "Caille le lait et moule des tommes : le lait ne tourne plus, il prend de la valeur."},
+    "chaudron":     {"nom": "Chaudron en cuivre", "emoji": "🍯", "prix": 900, "entretien": 2, "capacite": 10,
+                     "desc": "Pour les confitures : les fraises et les melons trop mûrs ne sont plus perdus."},
+    "autoclave":    {"nom": "Autoclave de conserverie", "emoji": "🥫", "prix": 1500, "entretien": 3, "capacite": 12,
+                     "desc": "Met en bocaux la sauce tomate et le velouté de potiron : des légumes d'été vendus en hiver."},
+    "rouet":        {"nom": "Rouet électrique", "emoji": "🧶", "prix": 1200, "entretien": 2, "capacite": 6,
+                     "desc": "File la laine brute en pelotes, deux fois plus chères."},
+    "four":         {"nom": "Four à pain", "emoji": "🍞", "prix": 2000, "entretien": 4, "capacite": 10,
+                     "desc": "Pain de maïs et pain d'épices au miel, avec les œufs et le maïs de la ferme."},
+}
+# `entrees` : ce que consomme un lot ; `sortie` : kg produits par lot ; `duree` : minutes par fournée.
+RECETTES = {
+    "fromage":         {"nom": "Fromage", "equipement": "cuve_fromage", "entrees": {"lait": 10}, "sortie": 1.0, "duree": 8 * 60},
+    "confiture":       {"nom": "Confiture de fraises", "equipement": "chaudron", "entrees": {"fraises": 1.4}, "sortie": 1.0, "duree": 3 * 60},
+    "confiture_melon": {"nom": "Confiture de melon", "equipement": "chaudron", "entrees": {"melons": 1.5}, "sortie": 1.0, "duree": 3 * 60},
+    "sauce_tomate":    {"nom": "Sauce tomate", "equipement": "autoclave", "entrees": {"tomates": 2.0}, "sortie": 1.0, "duree": 4 * 60},
+    "veloute":         {"nom": "Velouté de potiron", "equipement": "autoclave", "entrees": {"potirons": 2.0, "carottes": 0.5}, "sortie": 1.0, "duree": 5 * 60},
+    "pelotes":         {"nom": "Pelotes de laine", "equipement": "rouet", "entrees": {"laine": 1.1}, "sortie": 1.0, "duree": 6 * 60},
+    "pain_mais":       {"nom": "Pain de maïs", "equipement": "four", "entrees": {"mais": 1.0, "oeufs": 2}, "sortie": 1.0, "duree": 3 * 60},
+    "pain_epices":     {"nom": "Pain d'épices", "equipement": "four", "entrees": {"miel": 0.4, "oeufs": 3}, "sortie": 1.0, "duree": 4 * 60},
+}
+ATELIER_QUALITE = 6           # le savoir-faire de l'atelier ajoute un peu de qualité aux produits
+# Produits transformés : ils se gardent bien plus longtemps que les produits frais.
+ITEMS.update({
+    "fromage":         {"nom": "Fromage", "unite": "kg", "prix": 16.0, "perime": 1, "attrait": 2.4, "panier": (0.3, 1), "grossiste": "fromager", "transforme": True},
+    "confiture":       {"nom": "Confiture de fraises", "unite": "kg", "prix": 13.0, "perime": 0.3, "attrait": 2.0, "panier": (0.4, 1), "grossiste": "boulanger", "transforme": True},
+    "confiture_melon": {"nom": "Confiture de melon", "unite": "kg", "prix": 9.5, "perime": 0.3, "attrait": 1.4, "panier": (0.4, 1), "grossiste": "boulanger", "transforme": True},
+    "sauce_tomate":    {"nom": "Sauce tomate", "unite": "kg", "prix": 6.5, "perime": 0.3, "attrait": 1.8, "panier": (0.5, 1.5), "grossiste": "fromager", "transforme": True},
+    "veloute":         {"nom": "Velouté de potiron", "unite": "kg", "prix": 6.0, "perime": 0.4, "attrait": 1.5, "panier": (0.5, 1.5), "grossiste": "fromager", "transforme": True},
+    "pelotes":         {"nom": "Pelotes de laine", "unite": "kg", "prix": 19.0, "perime": 0, "attrait": 0.8, "panier": (0.2, 0.6), "grossiste": "artisan", "transforme": True},
+    "pain_mais":       {"nom": "Pain de maïs", "unite": "kg", "prix": 4.5, "perime": 15, "attrait": 2.6, "panier": (0.5, 1.5), "grossiste": "boulanger", "transforme": True},
+    "pain_epices":     {"nom": "Pain d'épices", "unite": "kg", "prix": 14.0, "perime": 1.5, "attrait": 1.6, "panier": (0.3, 0.8), "grossiste": "boulanger", "transforme": True},
+})
+EMOJI = {"lait": "🥛", "oeufs": "🥚", "laine": "🧶", "miel": "🍯", "fumier": "💩",
+         "fromage": "🧀", "confiture": "🍓", "confiture_melon": "🍈", "sauce_tomate": "🥫", "veloute": "🥣",
+         "pelotes": "🧶", "pain_mais": "🍞", "pain_epices": "🍪"}
+
+# --- Commandes de clients -----------------------------------------------------------
+CLIENTS = [("Le Bistrot du Val", "🍽️"), ("La cantine de l'école", "🏫"), ("L'Épicerie fine Martin", "🛒"),
+           ("L'Hôtel des Tilleuls", "🏨"), ("La Crêperie du lavoir", "🥞"), ("Le comité des fêtes", "🎉"),
+           ("La maison de retraite", "🏡"), ("Le traiteur Duval", "🥂")]
+COMMANDES_MAX = 3
+COMMANDE_CHANCE = 0.6         # chance par jour d'en recevoir une nouvelle (s'il y a de la place)
+# quantité demandée (mini, maxi, pas d'arrondi) ; par défaut pour les cultures : selon le rendement
+COMMANDE_QTE = {"lait": (20, 90, 5), "oeufs": (24, 96, 12), "laine": (2, 6, 1), "miel": (2, 6, 0.5)}
+COMMANDE_QTE_TRANSFO = (3, 12, 1)
 GROS = 0.6                    # le négociant paie 60 % du cours du jour (avant qualité)
 
 SATIETE_BAISSE = 0.07         # satiété perdue par minute de jeu (un repas tient la nuit, de 18 h à 6 h)
@@ -217,8 +302,33 @@ OBJECTIVES = [
     {"id": "terrain", "titre": "Acheter une nouvelle parcelle"},
     {"id": "association", "titre": "Associer deux cultures sur une parcelle"},
     {"id": "techno", "titre": "Acheter une technologie moderne"},
+    {"id": "transformation", "titre": "Transformer un produit à l'atelier"},
+    {"id": "commande", "titre": "Livrer une commande à un client"},
+    {"id": "hiver", "titre": "Passer le premier hiver"},
     {"id": "fortune", "titre": f"Atteindre {TARGET_MONEY:,} € en caisse".replace(",", " ")},
 ]
+
+
+EVENEMENT_CHANCE = 0.32       # chance par jour d'un événement aléatoire (à partir du jour 3)
+MODES = {"classique": f"Atteindre {TARGET_MONEY:,} € sans faire faillite".replace(",", " "),
+         "libre": "Pas d'objectif d'argent : développez la ferme à votre rythme"}
+
+
+def saison_du_jour(day: int) -> str:
+    return SAISON_ORDRE[((day - 1) // SAISON_JOURS) % 4]
+
+
+def saisons_txt(saisons) -> str:
+    """["printemps", "ete"] → « au printemps et en été »."""
+    mots = [("au " if x == "printemps" else "en ") + SAISONS[x]["nom"].lower() for x in saisons]
+    return mots[0] if len(mots) == 1 else ", ".join(mots[:-1]) + " et " + mots[-1]
+
+
+def qf_txt(v: float) -> str:
+    """Quantité lisible à la française : 12 · 2,5 · 0,4."""
+    if abs(v - round(v)) < 0.05:
+        return f"{round(v)}"
+    return f"{v:.1f}".replace(".", ",")
 
 
 def clamp(v, lo=0.0, hi=100.0):
@@ -270,15 +380,14 @@ class Game:
 
     # -------- création --------
     @staticmethod
-    def new_state(seed: int | None = None) -> dict:
+    def new_state(seed: int | None = None, mode: str = "classique") -> dict:
         seed = seed if seed is not None else random.randrange(1, 10**9)
-        rng = random.Random(seed)
-        animals = {}
         animals = {cat: Game.empty_herd() for cat in ANIMALS}   # le fermier démarre sans aucune bête
         fields = {k: Game.empty_field(hum, pret=False) for k, hum in zip(FIELDS, (72.0, 64.0, 70.0))}
         st = {
-            "version": 4,
+            "version": 5,
             "seed": seed,
+            "mode": mode if mode in MODES else "classique",
             "minute": 5 * 60,          # jour 1 (lundi), 05:00
             "vitesse": 1,
             "menu": False,             # menu principal ouvert (jeu en pause)
@@ -310,15 +419,28 @@ class Game:
             "ruches": 0,
             "technologies": [],
             "stats": {"recolte_kg": 0.0, "ventes": 0.0, "ventes_marche": 0.0, "recoltes": 0, "energie": 0.0,
-                      "production_jour": {}, "hier": {}},
+                      "production_jour": {}, "hier": {}, "transformations": 0, "commandes": 0, "commandes_ratees": 0},
+            "atelier": Game.empty_workshop(),
+            "commandes": [],
+            "prochaine_commande": 1,
+            "effets": [],
+            "evenements": [],
+            "gel_jour": 0,
             "objectifs": [],
             "journal": [],
         }
         g = Game(st)
         g._roll_forecast(initial=True)
-        g.log("Bienvenue à la Ferme du Val Vert ! Les parcelles sont en friche : préparez le sol, puis semez. "
-              "L'élevage est vide : achetez vos premières bêtes quand vous serez prêt. Premier marché demain mardi, 7 h.", "info")
+        libre = " Mode libre : pas d'objectif d'argent, prenez votre temps." if st["mode"] == "libre" else ""
+        g.log("Bienvenue à la Ferme du Val Vert ! C'est le printemps : préparez le sol, puis semez. "
+              "L'élevage est vide : achetez vos premières bêtes quand vous serez prêt. Premier marché demain mardi, 7 h."
+              + libre, "info")
         return st
+
+    @staticmethod
+    def empty_workshop() -> dict:
+        """L'atelier : pas encore construit ; chaque machine achetée a sa fournée en cours (ou rien)."""
+        return {"construit": False, "equipements": {}}
 
     @staticmethod
     def empty_bed(pret: bool = True) -> dict:
@@ -368,12 +490,14 @@ class Game:
             for f in s["champs"].values():
                 if "planches" not in f:
                     f["planches"] = [{k: f.pop(k, v) for k, v in self.empty_bed().items()}]
-        s["version"] = 4
+        s["version"] = 5
         for k, v in {"technologies": [], "meteo_hier": None, "menu": False, "vitesse_menu": 1, "eoliennes": 0, "ruches": 0, "reputation": 50.0, "collecte_lait": True, "collecte_jour": 0,
                      "dernier_chimique": -10 * MIN_PER_DAY, "repas_bio": 0.0, "etal": self.default_stall(),
-                     "marche": self.empty_market(0), "qualite": {}, "bio": {}}.items():
+                     "marche": self.empty_market(0), "qualite": {}, "bio": {}, "mode": "classique",
+                     "atelier": self.empty_workshop(), "commandes": [], "prochaine_commande": 1, "effets": [],
+                     "evenements": [], "gel_jour": 0}.items():
             s.setdefault(k, v)
-        for k, v in {"energie": 0.0, "ventes_marche": 0.0}.items():
+        for k, v in {"energie": 0.0, "ventes_marche": 0.0, "transformations": 0, "commandes": 0, "commandes_ratees": 0}.items():
             s["stats"].setdefault(k, v)
         s["stock"].setdefault("foin_bio", 0.0)
         for k, info in ITEMS.items():
@@ -402,7 +526,7 @@ class Game:
         if s.get("meteo"):   # anciennes sauvegardes : 3 jours de prévisions seulement
             rng = random.Random(f"{s['seed']}-{s['minute']:.0f}-meteo-ext")
             while len(s["previsions"]) < FORECAST_DAYS:
-                s["previsions"].append(self._pick_weather(rng))
+                s["previsions"].append(self._pick_weather(rng, self.day + 1 + len(s["previsions"])))
 
     # -------- utilitaires --------
     @property
@@ -454,7 +578,45 @@ class Game:
         return len(crops) >= 2
 
     def has_tech(self, t: str) -> bool:
-        return t in self.s["technologies"]
+        """La technologie est achetée et en état de marche (pas en panne)."""
+        return t in self.s["technologies"] and t not in self.broken()
+
+    def broken(self) -> list[str]:
+        return [e["tech"] for e in self.active_effects() if e["id"] == "panne"]
+
+    # -------- saisons --------
+    @property
+    def saison(self) -> str:
+        return saison_du_jour(self.day)
+
+    @property
+    def sz(self) -> dict:
+        return SAISONS[self.saison]
+
+    @property
+    def year(self) -> int:
+        return (self.day - 1) // (4 * SAISON_JOURS) + 1
+
+    def in_season(self, c: str, saison: str | None = None) -> bool:
+        return (saison or self.saison) in CROPS[c]["saisons"]
+
+    def season_info(self) -> dict:
+        i = SAISON_ORDRE.index(self.saison)
+        jour = (self.day - 1) % SAISON_JOURS + 1
+        nxt = SAISON_ORDRE[(i + 1) % 4]
+        return {"id": self.saison, "nom": self.sz["nom"], "emoji": self.sz["emoji"], "desc": self.sz["desc"],
+                "jour": jour, "jours": SAISON_JOURS, "annee": self.year, "reste": SAISON_JOURS - jour + 1,
+                "prochaine": SAISONS[nxt]["nom"], "prochaine_id": nxt}
+
+    # -------- effets temporaires (événements) --------
+    def active_effects(self) -> list[dict]:
+        return [e for e in self.s["effets"] if e["fin"] > self.s["minute"]]
+
+    def effect_mult(self, key: str) -> float:
+        m = 1.0
+        for e in self.active_effects():
+            m *= e.get(key, 1.0)
+        return m
 
     def drone_active(self) -> bool:
         return self.has_tech("drone") and self.s["meteo"]["type"] != "orage"
@@ -474,7 +636,13 @@ class Game:
     def charges(self) -> float:
         return 35 + 1.5 * self.n_animals() + 12 * len(self.s["ameliorations"]) \
             + BUILDINGS["serre"]["entretien"] * self.n_serres() + EXTRA_FIELD_UPKEEP * self.n_extra_fields() \
-            + sum(TECH[t]["entretien"] for t in self.s["technologies"])
+            + sum(TECH[t]["entretien"] for t in self.s["technologies"]) + self.workshop_upkeep()
+
+    def workshop_upkeep(self) -> float:
+        at = self.s["atelier"]
+        if not at["construit"]:
+            return 0.0
+        return ATELIER["entretien"] + sum(EQUIPEMENTS[e]["entretien"] for e in at["equipements"])
 
     def serre_unlocked(self) -> bool:
         return self.s["stats"]["ventes"] >= BUILDINGS["serre"]["ventes_requises"]
@@ -540,7 +708,8 @@ class Game:
 
     def fair_price(self, item: str) -> float:
         """Prix que les clients trouvent honnête : cours du jour × qualité × bio."""
-        return self.s["prix"][item] * quality_mult(self.s["qualite"][item]) * bio_mult(self.s["bio"][item])
+        return self.s["prix"][item] * quality_mult(self.s["qualite"][item]) * bio_mult(self.s["bio"][item]) \
+            * (self.effect_mult("prix") if self.market_open() else 1.0)
 
     def wholesale_price(self, item: str) -> float:
         q, b = self.s["qualite"][item], self.s["bio"][item]
@@ -562,7 +731,8 @@ class Game:
             return 0.0
         variety = min(1.4, 0.55 + 0.1 * n)
         peak = 1.3 if 9 <= self.hour < 11.5 else 1.0
-        return 26 * (0.5 + self.s["reputation"] / 100) * WEATHER[self.s["meteo"]["type"]]["clients"] * peak * variety
+        return 26 * (0.5 + self.s["reputation"] / 100) * WEATHER[self.s["meteo"]["type"]]["clients"] * peak * variety \
+            * self.effect_mult("clients")
 
     # -------- stock --------
     def _add(self, item: str, qty: float, q: float, bio: float):
@@ -582,7 +752,7 @@ class Game:
     def honey_per_day(self) -> float:
         info = BUILDINGS["ruche"]
         flowers = min(1.0, 0.4 + 0.2 * self.flowering())
-        return self.s["ruches"] * info["miel_jour"] * WEATHER[self.s["meteo"]["type"]]["miel"] * flowers
+        return self.s["ruches"] * info["miel_jour"] * WEATHER[self.s["meteo"]["type"]]["miel"] * flowers * self.sz["miel"]
 
     def honey_quality(self) -> float:
         cultures = {b["culture"] for *_, b in self.beds() if b["etat"] in ("pousse", "mur")}
@@ -615,29 +785,42 @@ class Game:
         return 1 + 0.05 * min(3, self.s["ruches"])
 
     # -------- météo / cours --------
-    def _pick_weather(self, rng) -> dict:
+    def _pick_weather(self, rng, day: int) -> dict:
+        """Le temps d'un jour donné : les probabilités et la température dépendent de la saison."""
+        sz = SAISONS[saison_du_jour(day)]
         keys = list(WEATHER)
-        k = rng.choices(keys, weights=[WEATHER[x]["poids"] for x in keys])[0]
+        k = rng.choices(keys, weights=[sz["meteo"][x] for x in keys])[0]
         w = WEATHER[k]
-        return {"type": k, "nom": w["nom"], "temp": w["temp"] + rng.randint(-3, 3)}
+        temp = w["temp"] + sz["temp"] + rng.randint(-3, 3)
+        nom = "Neige" if k == "pluie" and temp <= 3 else w["nom"]   # l'hiver, il neige : la neige fond et arrose aussi
+        return {"type": k, "nom": nom, "temp": temp}
 
     def _roll_forecast(self, initial=False):
         rng = self.rng("meteo")
         if initial:
-            self.s["meteo"] = {"type": "soleil", "nom": "Ensoleillé", "temp": 28}
-            self.s["previsions"] = [self._pick_weather(rng) for _ in range(FORECAST_DAYS)]
+            self.s["meteo"] = {"type": "soleil", "nom": "Ensoleillé", "temp": 23}
+            self.s["previsions"] = [self._pick_weather(rng, self.day + 1 + i) for i in range(FORECAST_DAYS)]
         else:
             self.s["meteo_hier"] = self.s["meteo"]["type"]
             self.s["meteo"] = self.s["previsions"].pop(0)
-            self.s["previsions"].append(self._pick_weather(rng))
+            self.s["previsions"].append(self._pick_weather(rng, self.day + FORECAST_DAYS))
+
+    def season_price(self, item: str) -> float:
+        """Cours de référence selon la saison : primeurs hors saison plus chers, bocaux et fromages recherchés l'hiver."""
+        base = ITEMS[item]["prix"]
+        if item in CROPS and not self.in_season(item):
+            return base * HORS_SAISON
+        if self.saison == "hiver" and (ITEMS[item].get("transforme") or item in ("lait", "oeufs")):
+            return base * 1.15
+        return base
 
     def _update_prices(self):
         rng = self.rng("prix")
         self.s["prix_hier"] = dict(self.s["prix"])
         for k, info in ITEMS.items():
             p = self.s["prix"][k]
-            base = info["prix"]
-            p = p + (base - p) * 0.35 + base * rng.uniform(-0.12, 0.12)
+            base, target = info["prix"], self.season_price(k)
+            p = p + (target - p) * 0.35 + base * rng.uniform(-0.12, 0.12)
             self.s["prix"][k] = round(clamp(p, base * 0.55, base * 1.6), 3)
 
     # -------- boucle de simulation --------
@@ -655,6 +838,7 @@ class Game:
             self._check_meals()
             self._market_tick(step)
             self._milk_collection()
+            self._check_orders()
             if self.s["statut"] != "en_cours":
                 break
 
@@ -677,6 +861,8 @@ class Game:
         robot_herbes = self.has_tech("desherbeur")
         weed = DESHERBEUR_BOOST if robot_herbes else 1.0
         pest_rng = random.Random(f"{self.s['seed']}-nuisibles-{self.s['minute']:.0f}")
+        sz = self.sz
+        gel = temp < 0
         for key, f in self.s["champs"].items():
             serre = f["serre"]
             active = [b for b in f["planches"] if b["etat"] in ("seme", "pousse", "mur")]
@@ -691,6 +877,18 @@ class Game:
                 if b["etat"] not in ("seme", "pousse", "mur"):
                     continue
                 crop = CROPS[b["culture"]]
+                # gel : les cultures fragiles en plein champ souffrent quand il gèle
+                if gel and not serre and not crop.get("rustique"):
+                    b["sante"] = clamp(b["sante"] - GEL_DEGATS * m * protect)
+                    b["qualite"] = clamp(b["qualite"] - 0.01 * m)
+                    if self.s["gel_jour"] != self.day:
+                        self.s["gel_jour"] = self.day
+                        self.log(f"Il gèle ({temp:.0f} °C) : les cultures fragiles en plein champ souffrent. "
+                                 "Seules les carottes et les salades résistent dehors.", "alerte")
+                    if b["sante"] <= 0:
+                        b["etat"] = "fletri"
+                        self.log(f"{self.bed_name(key, i)} : les {crop['nom'].lower()} ont gelé.", "alerte")
+                        continue
                 # mauvaises herbes : elles aiment les sols humides ; le robot désherbeur les arrache au fur et à mesure
                 if robot_herbes:
                     b["herbes"] = 0.0
@@ -713,7 +911,7 @@ class Game:
                     hot = temp > 34 and not serre
                     heat = 0.6 if hot else 1.0
                     boost = b["boost"] if b["engrais_jusqua"] > self.s["minute"] else 1.0
-                    rate = 100.0 / (crop["jours"] * MIN_PER_DAY) * (SERRE_BOOST if serre else 1.0) * weed
+                    rate = 100.0 / (crop["jours"] * MIN_PER_DAY) * (SERRE_BOOST * sz["serre"] if serre else sz["pousse"]) * weed
                     herbes = 1 - 0.5 * b["herbes"] / 100      # envahie, une planche pousse deux fois moins vite
                     b["croissance"] = min(100.0, b["croissance"] + rate * water_factor * heat * boost * herbes * m)
                     if b["croissance"] > 8:
@@ -763,7 +961,7 @@ class Game:
             if not grp["liste"]:
                 continue
             dehors = grp["au_pre"]
-            broute = dehors and not self.night() and self.s["meteo"]["type"] != "orage"
+            broute = dehors and not self.night() and self.s["meteo"]["type"] != "orage" and sz["pre"]
             grp["satiete"] = clamp(grp["satiete"] - SATIETE_BAISSE * (PRE_SATIETE if broute else 1.0) * m)
             grp["proprete"] = clamp(grp["proprete"] - SALETE * (0.4 if dehors else 1.0) * m)
             sat, sale = grp["satiete"], grp["proprete"] < ENCLOS_SALE
@@ -781,7 +979,8 @@ class Game:
                 a["humeur"] = clamp(a["humeur"] + humeur * m)
             if self.feed_factor(sat):
                 eff = sum(a["sante"] for a in grp["liste"]) / 100.0
-                qty = info["par_jour"] * eff * (m / MIN_PER_DAY) * self.feed_factor(sat) * self.mood_factor(self.mood(cat))
+                qty = info["par_jour"] * eff * (m / MIN_PER_DAY) * self.feed_factor(sat) * self.mood_factor(self.mood(cat)) \
+                    * sz["prod"].get(info["produit"], 1.0)
                 q, bio = self.animal_quality(cat), self.s["repas_bio"]
                 if robot_traite:
                     self._add(info["produit"], qty, q, bio)
@@ -805,6 +1004,9 @@ class Game:
             qty = self.honey_per_day() * m / MIN_PER_DAY
             self._add("miel", qty, self.honey_quality(), self.honey_bio())
             prod["miel"] = prod.get("miel", 0) + qty
+
+        # atelier : les fournées terminées passent au stock
+        self._workshop_tick()
 
         # fraîcheur : les produits frais s'abîment
         for item, info in ITEMS.items():
@@ -919,6 +1121,11 @@ class Game:
         jour = JOURS[self.weekday]
         marche = " · jour de marché !" if self.market_day() else ""
         self.log(f"{jour} {self.day}{marche} Charges du jour : {charges:.0f} €. Météo : {self.s['meteo']['nom']}.", "info")
+        if (self.day - 1) % SAISON_JOURS == 0:
+            sz = self.sz
+            an = f" · année {self.year}" if self.saison == "printemps" else ""
+            self._event(sz["emoji"], f"{sz['nom']}{an}", sz["desc"][0].lower() + sz["desc"][1:], None)
+        self.s["effets"] = self.active_effects()
         if self.raining():
             self.log("Il pleut : la pluie arrose les parcelles en plein champ (pas les serres).", "info")
         # événements
@@ -943,6 +1150,13 @@ class Game:
         dehors = [ANIMALS[c]["nom"].lower() for c, g in self.s["animaux"].items() if g["au_pre"] and g["liste"] and c != "poules"]
         if dehors:
             self.log(f"Les {' et les '.join(dehors)} ont passé la nuit dehors : ils sont de mauvaise humeur.", "alerte")
+        # commandes de clients et événements aléatoires
+        orng = self.rng("commande")
+        if len(self.s["commandes"]) < COMMANDES_MAX and self.day >= 2 and orng.random() < COMMANDE_CHANCE:
+            self._new_order(orng)
+        erng = self.rng("evenement")
+        if self.day >= 3 and erng.random() < EVENEMENT_CHANCE:
+            self._random_event(erng)
         roll = rng.random()
         if roll < 0.10 and not self.has("cloture") and self.s["animaux"]["poules"]["liste"]:
             lost = self.s["animaux"]["poules"]["liste"].pop(rng.randrange(len(self.s["animaux"]["poules"]["liste"])))
@@ -990,8 +1204,9 @@ class Game:
         return 1.0 if satiete > 55 else 0.6 if satiete > 30 else 0.0
 
     def feed_needed(self, cats=None) -> float:
+        """Foin nécessaire pour un repas : les bêtes mangent plus en automne et en hiver."""
         cats = cats or list(self.s["animaux"])
-        return sum(ANIMALS[c]["ration"] * len(self.s["animaux"][c]["liste"]) for c in cats)
+        return sum(ANIMALS[c]["ration"] * len(self.s["animaux"][c]["liste"]) for c in cats) * self.sz["ration"]
 
     def _feed(self, auto=False) -> bool:
         """Sert un repas : foin bio d'abord, puis foin classique, puis le maïs de la ferme."""
@@ -1017,7 +1232,7 @@ class Game:
     # -------- actions joueur --------
     def act(self, action: dict) -> str:
         t = action.get("type")
-        if self.s["statut"] != "en_cours" and t not in ("nouvelle_partie", "vitesse", "menu"):
+        if self.s["statut"] != "en_cours" and t not in ("nouvelle_partie", "vitesse", "menu", "continuer"):
             raise ActionError("La partie est terminée. Lancez une nouvelle partie.")
         handler = getattr(self, f"_a_{t}", None)
         if handler is None:
@@ -1053,6 +1268,9 @@ class Game:
         crop = CROPS[c]
         if crop.get("serre") and not f["serre"]:
             raise ActionError(f"Les {crop['nom'].lower()} ne poussent que sous serre.")
+        if not f["serre"] and not self.in_season(c):
+            raise ActionError(f"Hors saison : en plein champ, les {crop['nom'].lower()} se sèment "
+                              f"{saisons_txt(crop['saisons'])}. Sous serre, tout pousse toute l'année.")
         self._pay(crop["graines"])
         f["planches"][i].update(etat="seme", culture=c, croissance=0.0, sante=100.0, qualite=100.0, chimique=False,
                                 engrais_jusqua=0, boost=1.0, mur_depuis=None, sol_pret=False, herbes=0.0, nuisible=None)
@@ -1177,8 +1395,8 @@ class Game:
                 b["sol_pret"] = True
                 self._sow(key, i, c)
                 replant = f" Le semoir a ressemé (−{CROPS[c]['graines']} €)."
-            except ActionError:
-                replant = " Le semoir n'a pas pu ressemer : fonds insuffisants."
+            except ActionError as e:
+                replant = f" Le semoir n'a pas pu ressemer : {str(e).split(' :')[0].lower()}."
         self.log(f"{who} {msg} sur la {self.bed_name(key, i)}.{replant}", "succes")
         return f"+{msg}.{replant}"
 
@@ -1414,6 +1632,15 @@ class Game:
             where = "près de la maison" if b == "eolienne" else "au bord du jardin"
             self.log(f"{info['nom']} n°{self.s[key]} installée {where} !", "succes")
             return f"{info['nom']} installée."
+        if b == "atelier":
+            at = self.s["atelier"]
+            if at["construit"]:
+                raise ActionError("L'atelier est déjà construit.")
+            self._pay(ATELIER["prix"])
+            at["construit"] = True
+            self.log(f"L'atelier de transformation est construit à côté du réservoir ! Installez-y du matériel "
+                     f"(entretien {ATELIER['entretien']} €/jour).", "succes")
+            return "Atelier construit."
         if b == "serre":
             info = BUILDINGS["serre"]
             key, f = self._field(a)
@@ -1448,7 +1675,7 @@ class Game:
         t = a.get("tech")
         if t not in TECH:
             raise ActionError("Technologie inconnue.")
-        if self.has_tech(t):
+        if t in self.s["technologies"]:
             raise ActionError("Déjà acheté.")
         self._pay(TECH[t]["prix"])
         self.s["technologies"].append(t)
@@ -1476,13 +1703,366 @@ class Game:
         return "C'est reparti !"
 
     def _a_nouvelle_partie(self, a):
-        self.s = self.new_state()
-        return "Nouvelle partie !"
+        mode = a.get("mode", "classique")
+        if mode not in MODES:
+            raise ActionError("Mode de jeu inconnu.")
+        self.s = self.new_state(mode=mode)
+        return "Nouvelle partie en mode libre !" if mode == "libre" else "Nouvelle partie !"
 
     def _pay(self, cost: float):
         if self.s["argent"] < cost:
             raise ActionError(f"Fonds insuffisants ({cost:.0f} € nécessaires).")
         self.s["argent"] -= cost
+
+    # -------- atelier de transformation --------
+    def max_lots(self, r: str) -> int:
+        """Nombre de lots qu'on peut lancer maintenant avec le stock (sans dépasser la capacité de la machine)."""
+        rec = RECETTES[r]
+        n = EQUIPEMENTS[rec["equipement"]]["capacite"]
+        for item, q in rec["entrees"].items():
+            n = min(n, int(self.s["stock"][item] // q + 1e-9))
+        return max(0, n)
+
+    def _start_batch(self, eq: str, r: str, lots: int) -> str:
+        rec = RECETTES[r]
+        machine = self.s["atelier"]["equipements"][eq]
+        if machine["lot"]:
+            raise ActionError(f"{EQUIPEMENTS[eq]['nom']} : une fournée est déjà en cours.")
+        if lots < 1:
+            manque = [ITEMS[i]["nom"].lower() for i, q in rec["entrees"].items() if self.s["stock"][i] < q]
+            raise ActionError(f"Pas assez de {' ni de '.join(manque) or 'matière première'} pour une fournée de {rec['nom'].lower()}.")
+        # qualité et part bio : moyenne des ingrédients, pondérée par leur valeur
+        poids = {i: q * lots * ITEMS[i]["prix"] for i, q in rec["entrees"].items()}
+        tot = sum(poids.values()) or 1.0
+        q_in = sum(self.s["qualite"][i] * w for i, w in poids.items()) / tot
+        bio = sum(self.s["bio"][i] * w for i, w in poids.items()) / tot
+        for i, q in rec["entrees"].items():
+            self.s["stock"][i] = max(0.0, self.s["stock"][i] - q * lots)
+        qty = rec["sortie"] * lots
+        machine.update(recette=r, lot={"recette": r, "qte": qty, "q": clamp(q_in + ATELIER_QUALITE), "bio": bio,
+                                       "debut": self.s["minute"], "fin": self.s["minute"] + rec["duree"]})
+        return f"{EQUIPEMENTS[eq]['nom']} : {qf_txt(qty)} kg de {rec['nom'].lower()} en préparation ({rec['duree'] // 60} h)."
+
+    def _workshop_tick(self):
+        at = self.s["atelier"]
+        for eq, machine in at["equipements"].items():
+            lot = machine["lot"]
+            if not lot or lot["fin"] > self.s["minute"]:
+                continue
+            r = lot["recette"]
+            self._add(r, lot["qte"], lot["q"], lot["bio"])
+            machine["lot"] = None
+            self.s["stats"]["transformations"] += 1
+            prod = self.s["stats"]["production_jour"]
+            prod[r] = prod.get(r, 0) + lot["qte"]
+            again = ""
+            if machine.get("auto"):
+                try:
+                    self._start_batch(eq, r, self.max_lots(r))
+                    again = " Nouvelle fournée lancée."
+                except ActionError:
+                    again = " Plus assez d'ingrédients pour relancer."
+            self.log(f"Atelier : {qf_txt(lot['qte'])} kg de {RECETTES[r]['nom'].lower()} prêts "
+                     f"(qualité {quality_label(lot['q']).lower()}{', bio' if lot['bio'] >= 0.95 else ''}).{again}", "succes")
+            self._update_objectives()
+
+    def _a_equiper(self, a):
+        """Achète une machine pour l'atelier (le bâtiment doit être construit)."""
+        eq = a.get("equipement")
+        if eq not in EQUIPEMENTS:
+            raise ActionError("Matériel inconnu.")
+        at = self.s["atelier"]
+        if not at["construit"]:
+            raise ActionError("Construisez d'abord l'atelier de transformation.")
+        if eq in at["equipements"]:
+            raise ActionError("Déjà installé.")
+        info = EQUIPEMENTS[eq]
+        self._pay(info["prix"])
+        at["equipements"][eq] = {"lot": None, "auto": False, "recette": None}
+        recettes = ", ".join(RECETTES[r]["nom"].lower() for r in RECETTES if RECETTES[r]["equipement"] == eq)
+        self.log(f"Atelier : {info['nom'].lower()} installé ({recettes}). Entretien {info['entretien']} €/jour.", "succes")
+        return f"{info['nom']} installé."
+
+    def _a_transformer(self, a):
+        """Lance une fournée : `lots` (nombre) ou « max » pour tout ce que la machine peut prendre."""
+        r = a.get("recette")
+        if r not in RECETTES:
+            raise ActionError("Recette inconnue.")
+        eq = RECETTES[r]["equipement"]
+        if eq not in self.s["atelier"]["equipements"]:
+            raise ActionError(f"Il faut d'abord installer : {EQUIPEMENTS[eq]['nom'].lower()}.")
+        lots = a.get("lots", "max")
+        if lots == "max":
+            lots = self.max_lots(r)
+        else:
+            try:
+                lots = int(lots)
+            except (TypeError, ValueError):
+                raise ActionError("Nombre de lots invalide.")
+            if lots > EQUIPEMENTS[eq]["capacite"]:
+                raise ActionError(f"La machine prend au plus {EQUIPEMENTS[eq]['capacite']} lots.")
+            if lots > self.max_lots(r):
+                lots = 0 if self.max_lots(r) == 0 else lots
+                if lots:
+                    raise ActionError("Pas assez d'ingrédients pour autant de lots.")
+        return self._start_batch(eq, r, lots)
+
+    def _a_atelier_auto(self, a):
+        """Relance automatiquement la même recette à la fin de chaque fournée."""
+        eq = a.get("equipement")
+        machine = self.s["atelier"]["equipements"].get(eq)
+        if machine is None:
+            raise ActionError("Matériel non installé.")
+        machine["auto"] = bool(a.get("actif"))
+        nom = EQUIPEMENTS[eq]["nom"]
+        return f"{nom} : relance automatique." if machine["auto"] else f"{nom} : relance manuelle."
+
+    # -------- commandes de clients --------
+    def _order_candidates(self) -> list[str]:
+        """Ce que la ferme peut raisonnablement fournir en ce moment."""
+        out = []
+        serre = self.n_serres() > 0
+        for c, crop in CROPS.items():
+            if (crop.get("serre") and serre) or (not crop.get("serre") and (self.in_season(c) or serre)):
+                out.append(c)
+        for cat, g in self.s["animaux"].items():
+            if g["liste"] and ANIMALS[cat]["produit"] != "fumier":
+                out.append(ANIMALS[cat]["produit"])
+        if self.s["ruches"]:
+            out.append("miel")
+        for r, rec in RECETTES.items():
+            if rec["equipement"] in self.s["atelier"]["equipements"]:
+                out.append(r)
+        return out
+
+    def _new_order(self, rng: random.Random):
+        items = self._order_candidates()
+        if not items:
+            return
+        item = rng.choice(items)
+        if item in CROPS:
+            y = CROPS[item]["rendement"]
+            lo, hi, step = round(y * 0.15, -1) or 10, round(y * 0.45, -1), 10
+        elif ITEMS[item].get("transforme"):
+            lo, hi, step = COMMANDE_QTE_TRANSFO
+        else:
+            lo, hi, step = COMMANDE_QTE[item]
+        qty = round(rng.uniform(lo, hi) / step) * step
+        qty = max(step, qty)
+        qmin = rng.choice([0, 0, 50, 70])
+        bio = rng.random() < 0.3
+        mult = 1.3 + (0.15 if qmin >= 50 else 0) + (0.15 if qmin >= 70 else 0) + (0.25 if bio else 0)
+        prix = max(5, round(qty * self.season_price(item) * mult / 5) * 5)
+        delai = rng.randint(2, 5)
+        client, emo = rng.choice(CLIENTS)
+        o = {"id": self.s["prochaine_commande"], "client": client, "emoji": emo, "produit": item, "qte": qty,
+             "qmin": qmin, "bio": bio, "prix": prix, "recue": self.day,
+             "echeance": (self.day - 1 + delai) * MIN_PER_DAY + 20 * 60}
+        self.s["prochaine_commande"] += 1
+        self.s["commandes"].append(o)
+        jour = JOURS[(self.weekday + delai) % 7].lower()
+        self.log(f"Nouvelle commande de {client} : {qf_txt(qty)} {ITEMS[item]['unite']} de {ITEMS[item]['nom'].lower()}"
+                 f"{' bio' if bio else ''} pour {prix} €, à livrer avant {jour} 20 h.", "succes")
+
+    def order_problem(self, o: dict) -> str | None:
+        """Pourquoi on ne peut pas (encore) livrer cette commande, ou None si c'est possible."""
+        item = o["produit"]
+        have = self.s["stock"][item]
+        if have + 1e-9 < o["qte"]:
+            return f"Il manque {qf_txt(o['qte'] - have)} {ITEMS[item]['unite']}"
+        if self.s["qualite"][item] < o["qmin"]:
+            return f"Qualité insuffisante ({round(self.s['qualite'][item])}/100, il faut {o['qmin']})"
+        if o["bio"] and self.s["bio"][item] < 0.95:
+            return "Le client veut du bio"
+        return None
+
+    def _order(self, a) -> dict:
+        o = next((x for x in self.s["commandes"] if x["id"] == a.get("id")), None)
+        if o is None:
+            raise ActionError("Commande introuvable.")
+        return o
+
+    def _a_livrer(self, a):
+        o = self._order(a)
+        pb = self.order_problem(o)
+        if pb:
+            raise ActionError(f"Impossible de livrer {o['client']} : {pb[0].lower() + pb[1:]}.")
+        item = o["produit"]
+        q = self.s["qualite"][item]
+        self.s["stock"][item] -= o["qte"]
+        self.s["argent"] += o["prix"]
+        self.s["stats"]["ventes"] += o["prix"]
+        self.s["stats"]["commandes"] += 1
+        self.s["commandes"].remove(o)
+        bonus = 4 if q >= 85 else 3
+        self.s["reputation"] = clamp(self.s["reputation"] + bonus)
+        self.log(f"Commande livrée à {o['client']} : +{o['prix']} €. Le client est ravi (réputation +{bonus}).", "succes")
+        return f"Livré ! +{o['prix']} €"
+
+    def _a_refuser(self, a):
+        o = self._order(a)
+        self.s["commandes"].remove(o)
+        self.s["reputation"] = clamp(self.s["reputation"] - 1)
+        return f"Commande de {o['client']} refusée (réputation −1)."
+
+    def _check_orders(self):
+        for o in [x for x in self.s["commandes"] if x["echeance"] <= self.s["minute"]]:
+            self.s["commandes"].remove(o)
+            self.s["stats"]["commandes_ratees"] += 1
+            self.s["reputation"] = clamp(self.s["reputation"] - 5)
+            self.log(f"Commande non livrée : {o['client']} attendait {qf_txt(o['qte'])} {ITEMS[o['produit']]['unite']} de "
+                     f"{ITEMS[o['produit']]['nom'].lower()}. Réputation −5.", "alerte")
+
+    # -------- événements aléatoires --------
+    def _event(self, emoji: str, titre: str, texte: str, bon: bool | None):
+        self.s["evenements"].insert(0, {"jour": self.day, "emoji": emoji, "titre": titre, "texte": texte,
+                                        "type": "bon" if bon else "mauvais" if bon is False else "info"})
+        del self.s["evenements"][12:]
+        self.log(f"{emoji} {titre} : {texte}", "succes" if bon else "alerte" if bon is False else "info")
+
+    def next_market_end(self) -> int:
+        """Minute de fin du prochain marché (aujourd'hui s'il n'est pas encore fini)."""
+        for d in range(0, 8):
+            wd = (self.weekday + d) % 7
+            if wd in MARKET_DAYS and (d > 0 or self.hour < MARKET_HOURS[1]):
+                return (self.day - 1 + d) * MIN_PER_DAY + MARKET_HOURS[1] * 60
+        return self.s["minute"] + MIN_PER_DAY
+
+    def _random_event(self, rng: random.Random):
+        s = self.s
+        open_beds = [(k, i, b) for k, i, f, b in self.beds() if not f["serre"] and b["etat"] in ("seme", "pousse", "mur")]
+        fragile = [(k, i, b) for k, i, b in open_beds if not CROPS[b["culture"]].get("rustique")]
+        animals = self.n_animals()
+        stock_ok = [k for k in ITEMS if k != "fumier" and s["stock"][k] >= self.min_unit(k)]
+        saison = self.saison
+
+        def subvention():
+            gain = rng.randrange(300, 750, 50)
+            s["argent"] += gain
+            self._event("🏛️", "Subvention", f"la région soutient les petites fermes : +{gain} € sur votre compte.", True)
+
+        def voisin():
+            s["stock"]["foin"] += 300
+            self._event("🤝", "Coup de main", "Henri, le voisin, vous dépose 300 kg de foin pour vous remercier.", True)
+
+        def essaim():
+            s["ruches"] += 1
+            self._event("🐝", "Essaim sauvage", f"un essaim s'est posé près du jardin : vous l'installez dans une ruche "
+                                               f"(ruche n°{s['ruches']}, gratuite).", True)
+
+        def grele():
+            k = rng.choice(sorted({k for k, _, _ in open_beds}))
+            for kk, _, b in open_beds:
+                if kk == k:
+                    b["sante"], b["qualite"] = clamp(b["sante"] - 20), clamp(b["qualite"] - 10)
+            self._event("🧊", "Grêle", f"une averse de grêle hache les plants de la {self.field_name(k)} (−20 % de santé).", False)
+
+        def sangliers():
+            k, i, b = rng.choice(open_beds)
+            if self.has("cloture"):
+                self._event("🐗", "Sangliers", "une harde rôde autour de la ferme, mais la clôture renforcée les arrête.", None)
+                return
+            b["sante"] = clamp(b["sante"] - 45)
+            self._event("🐗", "Sangliers", f"ils ont retourné la {self.bed_name(k, i)} cette nuit (−45 % de santé). "
+                                          "Une clôture renforcée les tiendrait à distance.", False)
+
+        def gelee():
+            for _, _, b in fragile:
+                b["sante"], b["qualite"] = clamp(b["sante"] - 15), clamp(b["qualite"] - 8)
+            self._event("🥶", "Gelée blanche", "une nuit glaciale a abîmé les cultures fragiles en plein champ (−15 % de santé).", False)
+
+        def fuite():
+            perte = round(s["reservoir"]["niveau"] * 0.3)
+            s["reservoir"]["niveau"] -= perte
+            self._event("💧", "Fuite au réservoir", f"{perte} L perdus avant que le plombier ne répare.", False)
+
+        def panne():
+            t = rng.choice(s["technologies"])
+            s["effets"].append({"id": "panne", "tech": t, "nom": f"{TECH[t]['nom']} en panne", "emoji": "🔧",
+                                "fin": s["minute"] + MIN_PER_DAY})
+            self._event("🔧", "Panne", f"{TECH[t]['nom'].lower()} est en panne : il reste à l'arrêt 24 h, le temps de la réparation.", False)
+
+        def controle():
+            if s["minute"] - s["dernier_chimique"] < 7 * MIN_PER_DAY:
+                s["argent"] -= 150
+                s["reputation"] = clamp(s["reputation"] - 6)
+                self._event("📋", "Contrôle bio", "l'inspecteur a trouvé des traces de produits chimiques récents : "
+                                                 "150 € d'amende et réputation −6.", False)
+            else:
+                s["reputation"] = clamp(s["reputation"] + 5)
+                self._event("📋", "Contrôle bio", "aucun produit chimique depuis une semaine : votre label est confirmé (réputation +5).", True)
+
+        def blogueuse():
+            s["effets"].append({"id": "affluence", "nom": "Une blogueuse parle de vous", "emoji": "📸", "clients": 1.5,
+                                "fin": self.next_market_end()})
+            self._event("📸", "Blogueuse culinaire", "elle a vanté votre étal : beaucoup plus de clients au prochain marché.", True)
+
+        def foire():
+            s["effets"].append({"id": "foire", "nom": "Foire agricole", "emoji": "🎪", "clients": 1.3, "prix": 1.15,
+                                "fin": self.next_market_end()})
+            self._event("🎪", "Foire agricole", "elle se tient au prochain marché : plus de monde, et les clients acceptent "
+                                               "de payer 15 % plus cher.", True)
+
+        def concours():
+            best = max(stock_ok, key=lambda k: s["qualite"][k])
+            nom = ITEMS[best]["nom"].lower()
+            if s["qualite"][best] >= 85:
+                prix = rng.randrange(200, 450, 50)
+                s["argent"] += prix
+                s["reputation"] = clamp(s["reputation"] + 4)
+                self._event("🏅", "Concours agricole", f"vos {nom} remportent le premier prix : +{prix} € et réputation +4.", True)
+            else:
+                self._event("🏅", "Concours agricole", f"vos {nom} sont jugés honnêtes, mais pas de prix cette fois "
+                                                      "(il faut une qualité excellente).", None)
+
+        def ecole():
+            for g in s["animaux"].values():
+                for x in g["liste"]:
+                    x["humeur"] = clamp(x["humeur"] + 15)
+            s["reputation"] = clamp(s["reputation"] + 3)
+            self._event("🏫", "Visite d'école", "une classe vient voir les animaux : les bêtes adorent les caresses (humeur +15) "
+                                               "et on parle de vous au village (réputation +3).", True)
+
+        def vaccins():
+            for g in s["animaux"].values():
+                for x in g["liste"]:
+                    x["sante"] = 100.0
+            self._event("💉", "Campagne de vaccination", "le vétérinaire passe gratuitement : tout le troupeau est en pleine forme.", True)
+
+        def abondance():
+            c = rng.choice([c for c in CROPS if self.in_season(c)])
+            s["prix"][c] = round(s["prix"][c] * 0.65, 3)
+            self._event("📉", "Récolte record chez les voisins", f"le cours des {CROPS[c]['nom'].lower()} chute de 35 %.", False)
+
+        choices = [
+            (subvention, 5, True),
+            (voisin, 5, animals > 0),
+            (essaim, 3, 1 <= s["ruches"] < BUILDINGS["ruche"]["max"] and saison in ("printemps", "ete")),
+            (grele, 5, bool(open_beds) and saison in ("printemps", "ete")),
+            (sangliers, 5, bool(open_beds) and saison in ("ete", "automne")),
+            (gelee, 6, bool(fragile) and saison in ("printemps", "automne")),
+            (fuite, 3, s["reservoir"]["niveau"] > 2000),
+            (panne, 4, bool([t for t in s["technologies"] if t not in self.broken()])),
+            (controle, 3, self.day >= 5),
+            (blogueuse, 5, True),
+            (foire, 4, True),
+            (concours, 4, bool(stock_ok)),
+            (ecole, 4, animals >= 4),
+            (vaccins, 3, animals >= 3),
+            (abondance, 4, True),
+        ]
+        ok = [(f, w) for f, w, cond in choices if cond]
+        f = rng.choices([f for f, _ in ok], weights=[w for _, w in ok])[0]
+        f()
+
+    def _a_continuer(self, a):
+        """Après la victoire : on garde la ferme et on continue en mode libre."""
+        if self.s["statut"] != "gagne":
+            raise ActionError("La partie n'est pas gagnée.")
+        self.s["statut"] = "en_cours"
+        self.s["mode"] = "libre"
+        self.log("La ferme continue en mode libre : plus d'objectif d'argent, faites-la grandir comme vous voulez !", "succes")
+        return self._a_menu({"ouvert": False})
 
     # -------- objectifs --------
     def _update_objectives(self):
@@ -1499,13 +2079,16 @@ class Game:
             "terrain": self.n_extra_fields() >= 1,
             "association": any(self.mixed(k) for k in self.s["champs"]),
             "techno": len(self.s["technologies"]) >= 1,
+            "transformation": self.s["stats"]["transformations"] >= 1,
+            "commande": self.s["stats"]["commandes"] >= 1,
+            "hiver": self.day > 4 * SAISON_JOURS,
             "fortune": self.s["argent"] >= TARGET_MONEY,
         }
         for o in OBJECTIVES:
             if o["id"] not in done and checks[o["id"]]:
                 self.s["objectifs"].append(o["id"])
                 self.log(f"Objectif atteint : {o['titre']} ✓", "succes")
-        if "fortune" in self.s["objectifs"] and self.s["statut"] == "en_cours":
+        if "fortune" in self.s["objectifs"] and self.s["statut"] == "en_cours" and self.s["mode"] == "classique":
             self.s["statut"] = "gagne"
             self.log(f"Victoire ! La ferme vaut plus de {TARGET_MONEY} €.", "succes")
 
@@ -1609,7 +2192,25 @@ class Game:
             "semaine": self.week(),
             "terrain_a_vendre": ({"cle": nxt[0], "nom": field_label(nxt[0]), "prix": nxt[1]}
                                  if (nxt := self.next_field()) else None),
+            "mode": s["mode"],
+            "saison": self.season_info(),
+            "en_saison": {c: self.in_season(c) for c in CROPS},
+            "gel": self.temperature() < 0,
+            "atelier": {eq: {"progression": (round(100 * (s["minute"] - m["lot"]["debut"]) / max(1, m["lot"]["fin"] - m["lot"]["debut"]))
+                                             if m["lot"] else 0),
+                             "reste_min": round(m["lot"]["fin"] - s["minute"]) if m["lot"] else 0}
+                        for eq, m in s["atelier"]["equipements"].items()},
+            "lots_possibles": {r: self.max_lots(r) for r in RECETTES},
+            "charges_atelier": self.workshop_upkeep(),
+            "commandes": [{**o, "probleme": self.order_problem(o), "reste_h": round((o["echeance"] - s["minute"]) / 60, 1),
+                           "jour_limite": JOURS[int(o["echeance"] // MIN_PER_DAY) % 7]}
+                          for o in s["commandes"]],
+            "effets": [{"nom": e["nom"], "emoji": e["emoji"], "reste_h": round((e["fin"] - s["minute"]) / 60)}
+                       for e in self.active_effects()],
+            "pannes": self.broken(),
         }
+        if s["mode"] == "libre":
+            s["derive"]["objectif_argent"] = None
         s["ref"] = {"parcelles": {k: {"nom": field_label(k), "taille": field_size(k)} for k in s["champs"]},
                     "meteo": WEATHER, "vent_kmh": WIND_KMH, "technologies": TECH, "max_planches": MAX_BEDS,
                     "association": ASSOCIATION, "drone_protection": DRONE_PROTECT, "desherbeur": DESHERBEUR_BOOST, "terrain_entretien": EXTRA_FIELD_UPKEEP,
@@ -1618,7 +2219,9 @@ class Game:
                     "prix_foin": FEED_PRICE, "prix_foin_bio": FEED_BIO_PRICE, "prix_chimique": CHEM_PRICE,
                     "prix_veto": VET_PRICE, "objectifs": OBJECTIVES, "serre_boost": SERRE_BOOST,
                     "tracteur": 1.2, "marche_heures": MARKET_HOURS, "collecte_heure": COLLECTE_HEURE,
-                    "soins": SOINS, "traitements": TRAITEMENT, "enclos_sale": ENCLOS_SALE}
+                    "soins": SOINS, "traitements": TRAITEMENT, "enclos_sale": ENCLOS_SALE,
+                    "saisons": SAISONS, "saison_ordre": SAISON_ORDRE, "atelier": ATELIER, "equipements": EQUIPEMENTS,
+                    "recettes": RECETTES, "modes": MODES, "commandes_max": COMMANDES_MAX}
         return s
 
     # -------- persistance --------
