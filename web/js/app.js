@@ -245,7 +245,8 @@ function renderTitle(s, d) {
   setHTML($("#title-card"), `<div class="title-logo">${icon("leaf")}</div>
     <h1>La Ferme du Val Vert</h1><p class="title-sub">Cultivez, élevez, vendez au marché.</p>
     ${maj}${save}${buttons}${tips}
-    <div class="title-foot muted small">${over || fresh ? "" : "Échap : revenir au jeu · "}La partie est sauvegardée automatiquement.${s.version ? `<br>Version ${s.version}` : ""}</div>`);
+    <div class="title-foot muted small">${over || fresh ? "" : "Échap : revenir au jeu · "}La partie est sauvegardée automatiquement.${s.version ? `<br>Version ${s.version}` : ""}
+      <br>${s.reseau ? `Sur les autres appareils du réseau : <b>${s.reseau}</b>` : "Accès depuis le réseau désactivé (option --local)"}</div>`);
 }
 
 function renderSidebar(s, d) {

@@ -45,12 +45,13 @@ class World:
         self.last_save = self.last
         self.version = mise_a_jour.version()
         self.maj = os.environ.get(mise_a_jour.ENV_MAJ)   # résumé de la mise à jour qui vient d'être installée
+        self.reseau = None   # adresse à taper sur les autres appareils (None = accès réseau désactivé)
         if self.maj:
             self.game.log(f"Jeu mis à jour : {self.maj}", "succes")
 
     def view(self) -> dict:
         v = self.game.view()
-        v["version"], v["maj"] = self.version, self.maj
+        v["version"], v["maj"], v["reseau"] = self.version, self.maj, self.reseau
         return v
 
     def tick(self):
@@ -112,12 +113,24 @@ def make_handler(world: World):
 
 
 def lan_ip():
+    """Adresse IPv4 de cet appareil sur le réseau local (None si introuvable)."""
+    # route vers une adresse privée : rien n'est envoyé, on lit juste l'interface choisie
+    for cible in ("10.255.255.255", "192.168.255.255", "8.8.8.8"):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect((cible, 1))
+                ip = s.getsockname()[0]
+            if not ip.startswith(("127.", "0.")):
+                return ip
+        except OSError:
+            pass
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))
-            return s.getsockname()[0]
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if not ip.startswith("127."):
+                return ip
     except OSError:
-        return None
+        pass
+    return None
 
 
 PORTS_CANDIDATS = [8000, 8001, 8002, 8080, 8888, 5000]
@@ -183,8 +196,10 @@ def main():
     if args.host not in ("127.0.0.1", "localhost"):
         ip = args.host if args.host not in ("0.0.0.0", "", "::") else lan_ip()
         if ip:
-            print(f"   depuis un autre appareil du réseau : http://{ip}:{port}")
+            world.reseau = f"http://{ip}:{port}"
+            print(f"   depuis un autre appareil du réseau : {world.reseau}")
         else:
+            world.reseau = f"http://<adresse IP de ce PC>:{port}"
             print(f"   depuis un autre appareil du réseau : http://<adresse IP de ce PC>:{port}")
         print("   (si ça ne répond pas : autorisez Python dans le pare-feu, sur les réseaux privés)")
 
