@@ -100,7 +100,7 @@ def redemarrer(resume: str):
     """Relance le jeu sur le nouveau code (mêmes arguments), sans revérifier les mises à jour.
 
     Le redémarrage se fait dans le même processus : les modules du jeu sont oubliés puis
-    `server.py` est réexécuté. Un lanceur (web_launcher…) garde ainsi la main sur le processus
+    `server.py` est réexécuté. Un lanceur garde ainsi la main sur le processus
     qu'il a démarré, et l'arrêter arrête bien le jeu.
     """
     print("Redémarrage du jeu sur la nouvelle version…\n", flush=True)
