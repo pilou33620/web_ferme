@@ -4,6 +4,9 @@
     python server.py --port 9000 --nouvelle
     python server.py --local    → cet appareil seulement (127.0.0.1)
     python server.py --sans-maj → ne pas chercher de mise à jour au démarrage
+
+Depuis un autre appareil du réseau, la page demande une fois le code d'appairage
+affiché dans la console (appairage.py) ; cet appareil-ci n'en a jamais besoin.
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import appairage
 import mise_a_jour
 from engine import GAME_MIN_PER_SEC, ActionError, Game
 
@@ -67,10 +71,14 @@ class World:
         self.last_save = time.monotonic()
 
 
-def make_handler(world: World):
+def make_handler(world: World, garde: appairage.Garde):
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *a, **kw):
             super().__init__(*a, directory=str(WEB), **kw)
+
+        def parse_request(self):
+            # Host contrôlé, et code d'appairage exigé des autres appareils du réseau
+            return super().parse_request() and garde.filtrer(self)
 
         def log_message(self, *a):  # silence
             pass
@@ -190,7 +198,9 @@ def main():
 
     threading.Thread(target=loop, daemon=True).start()
     ports = PORTS_CANDIDATS if args.port is None else [args.port] + [x for x in PORTS_CANDIDATS if x != args.port]
-    srv, port = ouvrir_serveur(args.host, ports, make_handler(world))
+    garde = appairage.Garde("La Ferme du Val Vert",
+                            actif=args.host not in ("127.0.0.1", "localhost", "::1"))
+    srv, port = ouvrir_serveur(args.host, ports, make_handler(world, garde))
     url = f"http://localhost:{port}"
     print(f"🌾 La Ferme du Val Vert tourne sur {url}  (Ctrl+C pour quitter)")
     if args.host not in ("127.0.0.1", "localhost"):
@@ -202,6 +212,8 @@ def main():
             world.reseau = f"http://<adresse IP de ce PC>:{port}"
             print(f"   depuis un autre appareil du réseau : http://<adresse IP de ce PC>:{port}")
         print("   (si ça ne répond pas : autorisez Python dans le pare-feu, sur les réseaux privés)")
+        print("   l'autre appareil demande une fois le code d'appairage ci-dessous :")
+        garde.annoncer()
 
     # arrêt demandé par un autre programme (launcher, kill…) → même sortie propre que Ctrl+C
     def stop(*_):
