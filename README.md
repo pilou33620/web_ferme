@@ -18,6 +18,8 @@ Par défaut le jeu écoute sur tout le réseau local (`0.0.0.0`). Au démarrage,
 
 La première fois, l'autre appareil demande un **code d'appairage** à 6 chiffres, affiché dans la console du jeu. Il s'en souvient ensuite, et vaut pour tous les web tools du même appareil serveur. L'appareil qui fait tourner le jeu n'a jamais besoin de code.
 
+Le jeu sert aussi HTTPS sur son port (avec `openssl` présent), et y renvoie les autres appareils : l'adresse affichée commence alors par `https://`. La première fois, installez sur l'autre appareil la CA du poste (lien affiché dans la console), sinon le navigateur affiche une alerte. `WEB_TOOLS_HTTP=1` garde tout en HTTP.
+
 Sous Windows, au premier lancement, le pare-feu demande s'il faut autoriser Python : cochez **Réseaux privés** et validez. Si la fenêtre n'est pas apparue ou a été refusée : *Pare-feu Windows Defender → Autoriser une application → Python → cocher « Privé »*. Vérifiez aussi que votre Wi-Fi est réglé en réseau **privé** et non public.
 
 Tous les appareils jouent la **même partie** : ce qui est fait sur l'un apparaît sur les autres.

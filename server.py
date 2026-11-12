@@ -201,16 +201,17 @@ def main():
     garde = appairage.Garde("La Ferme du Val Vert",
                             actif=args.host not in ("127.0.0.1", "localhost", "::1"))
     srv, port = ouvrir_serveur(args.host, ports, make_handler(world, garde))
+    garde.brancher(srv)   # en mode réseau : HTTPS sur le même port (le jeton ne passe plus en clair)
     url = f"http://localhost:{port}"
     print(f"🌾 La Ferme du Val Vert tourne sur {url}  (Ctrl+C pour quitter)")
     if args.host not in ("127.0.0.1", "localhost"):
         ip = args.host if args.host not in ("0.0.0.0", "", "::") else lan_ip()
         if ip:
-            world.reseau = f"http://{ip}:{port}"
+            world.reseau = garde.adresse(ip, port)
             print(f"   depuis un autre appareil du réseau : {world.reseau}")
         else:
-            world.reseau = f"http://<adresse IP de ce PC>:{port}"
-            print(f"   depuis un autre appareil du réseau : http://<adresse IP de ce PC>:{port}")
+            world.reseau = f"{garde.schema()}://<adresse IP de ce PC>:{port}"
+            print(f"   depuis un autre appareil du réseau : {world.reseau}")
         print("   (si ça ne répond pas : autorisez Python dans le pare-feu, sur les réseaux privés)")
         print("   l'autre appareil demande une fois le code d'appairage ci-dessous :")
         garde.annoncer()
