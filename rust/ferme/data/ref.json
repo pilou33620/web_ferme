@@ -1,0 +1,1153 @@
+{
+ "FIELDS": {
+  "parcelle_a": {
+   "nom": "Parcelle A",
+   "taille": 1.25
+  },
+  "parcelle_b": {
+   "nom": "Parcelle B",
+   "taille": 1.0
+  },
+  "parcelle_c": {
+   "nom": "Parcelle C",
+   "taille": 1.0
+  }
+ },
+ "EXTRA_FIELDS": [
+  [
+   "parcelle_d",
+   1800
+  ],
+  [
+   "parcelle_e",
+   2600
+  ],
+  [
+   "parcelle_f",
+   3500
+  ],
+  [
+   "parcelle_g",
+   4500
+  ],
+  [
+   "parcelle_h",
+   5500
+  ],
+  [
+   "parcelle_i",
+   6500
+  ]
+ ],
+ "SAISONS": {
+  "printemps": {
+   "nom": "Printemps",
+   "emoji": "🌸",
+   "pousse": 1.0,
+   "serre": 1.0,
+   "temp": -5,
+   "ration": 1.0,
+   "prod": {
+    "laine": 1.3
+   },
+   "miel": 1.0,
+   "pre": true,
+   "meteo": {
+    "soleil": 34,
+    "nuageux": 28,
+    "pluie": 26,
+    "orage": 8,
+    "canicule": 4
+   },
+   "desc": "Tout repart : c'est la saison des semis. Gare aux gelées tardives."
+  },
+  "ete": {
+   "nom": "Été",
+   "emoji": "☀️",
+   "pousse": 1.1,
+   "serre": 1.0,
+   "temp": 1,
+   "ration": 1.0,
+   "prod": {
+    "laine": 0.8
+   },
+   "miel": 1.25,
+   "pre": true,
+   "meteo": {
+    "soleil": 44,
+    "nuageux": 17,
+    "pluie": 11,
+    "orage": 11,
+    "canicule": 17
+   },
+   "desc": "Chaleur et orages : arrosez, récoltez vite, les abeilles s'activent."
+  },
+  "automne": {
+   "nom": "Automne",
+   "emoji": "🍂",
+   "pousse": 0.85,
+   "serre": 1.0,
+   "temp": -6,
+   "ration": 1.1,
+   "prod": {
+    "oeufs": 0.85
+   },
+   "miel": 0.5,
+   "pre": true,
+   "meteo": {
+    "soleil": 24,
+    "nuageux": 34,
+    "pluie": 32,
+    "orage": 10,
+    "canicule": 0
+   },
+   "desc": "Pluies et récoltes de fin de saison : préparez l'hiver, remplissez l'atelier."
+  },
+  "hiver": {
+   "nom": "Hiver",
+   "emoji": "❄️",
+   "pousse": 0.6,
+   "serre": 0.9,
+   "temp": -14,
+   "ration": 1.3,
+   "prod": {
+    "oeufs": 0.6
+   },
+   "miel": 0.0,
+   "pre": false,
+   "meteo": {
+    "soleil": 28,
+    "nuageux": 40,
+    "pluie": 30,
+    "orage": 2,
+    "canicule": 0
+   },
+   "desc": "Le gel guette : seules les cultures rustiques tiennent dehors. Les serres et l'atelier font vivre la ferme."
+  }
+ },
+ "SAISON_ORDRE": [
+  "printemps",
+  "ete",
+  "automne",
+  "hiver"
+ ],
+ "CROPS": {
+  "tomates": {
+   "nom": "Tomates",
+   "emoji": "🍅",
+   "type": "légume",
+   "jours": 4.0,
+   "rendement": 260,
+   "graines": 60,
+   "prix": 2.4,
+   "soif": 1.1,
+   "saisons": [
+    "printemps",
+    "ete"
+   ]
+  },
+  "carottes": {
+   "nom": "Carottes",
+   "emoji": "🥕",
+   "type": "légume",
+   "jours": 3.0,
+   "rendement": 230,
+   "graines": 40,
+   "prix": 1.7,
+   "soif": 1.0,
+   "saisons": [
+    "printemps",
+    "ete",
+    "automne",
+    "hiver"
+   ],
+   "rustique": true
+  },
+  "salades": {
+   "nom": "Salades",
+   "emoji": "🥬",
+   "type": "légume",
+   "jours": 2.0,
+   "rendement": 150,
+   "graines": 30,
+   "prix": 2.2,
+   "soif": 1.2,
+   "saisons": [
+    "printemps",
+    "automne",
+    "hiver"
+   ],
+   "rustique": true
+  },
+  "pommes_de_terre": {
+   "nom": "Pommes de terre",
+   "emoji": "🥔",
+   "type": "légume",
+   "jours": 5.0,
+   "rendement": 480,
+   "graines": 50,
+   "prix": 1.0,
+   "soif": 0.7,
+   "saisons": [
+    "printemps",
+    "ete"
+   ]
+  },
+  "mais": {
+   "nom": "Maïs",
+   "emoji": "🌽",
+   "type": "céréale",
+   "jours": 5.0,
+   "rendement": 340,
+   "graines": 70,
+   "prix": 0.9,
+   "soif": 1.0,
+   "saisons": [
+    "printemps",
+    "ete"
+   ]
+  },
+  "fraises": {
+   "nom": "Fraises",
+   "emoji": "🍓",
+   "type": "fruit",
+   "jours": 4.0,
+   "rendement": 120,
+   "graines": 90,
+   "prix": 6.0,
+   "soif": 1.3,
+   "saisons": [
+    "printemps",
+    "ete"
+   ]
+  },
+  "potirons": {
+   "nom": "Potirons",
+   "emoji": "🎃",
+   "type": "légume",
+   "jours": 6.0,
+   "rendement": 400,
+   "graines": 60,
+   "prix": 1.5,
+   "soif": 0.9,
+   "saisons": [
+    "printemps",
+    "ete",
+    "automne"
+   ]
+  },
+  "melons": {
+   "nom": "Melons",
+   "emoji": "🍈",
+   "type": "fruit",
+   "jours": 5.0,
+   "rendement": 240,
+   "graines": 120,
+   "prix": 3.8,
+   "soif": 1.2,
+   "serre": true,
+   "saisons": [
+    "printemps",
+    "ete"
+   ]
+  },
+  "poivrons": {
+   "nom": "Poivrons",
+   "emoji": "🫑",
+   "type": "légume",
+   "jours": 4.0,
+   "rendement": 180,
+   "graines": 100,
+   "prix": 4.2,
+   "soif": 1.1,
+   "serre": true,
+   "saisons": [
+    "ete",
+    "automne"
+   ]
+  }
+ },
+ "ANIMALS": {
+  "vaches": {
+   "nom": "Vaches",
+   "unite": "vache",
+   "ration": 5.0,
+   "produit": "lait",
+   "par_jour": 22.0,
+   "prix": 900
+  },
+  "poules": {
+   "nom": "Poules",
+   "unite": "poule",
+   "ration": 0.2,
+   "produit": "oeufs",
+   "par_jour": 0.8,
+   "prix": 25
+  },
+  "moutons": {
+   "nom": "Moutons",
+   "unite": "mouton",
+   "ration": 2.0,
+   "produit": "laine",
+   "par_jour": 0.3,
+   "prix": 180
+  },
+  "cochons": {
+   "nom": "Cochons",
+   "unite": "cochon",
+   "ration": 3.0,
+   "produit": "fumier",
+   "par_jour": 6.0,
+   "prix": 250
+  }
+ },
+ "NAMES": {
+  "vaches": [
+   "Marguerite",
+   "Blanchette",
+   "Noisette",
+   "Caramel",
+   "Praline",
+   "Rosalie",
+   "Vanille",
+   "Câline",
+   "Dorée",
+   "Églantine",
+   "Fleurette",
+   "Gaufrette",
+   "Iris",
+   "Jonquille",
+   "Lilas",
+   "Mirabelle",
+   "Nougat",
+   "Paquerette",
+   "Réglisse",
+   "Sucette",
+   "Tulipe",
+   "Violette"
+  ],
+  "poules": [
+   "Cocotte",
+   "Picotte",
+   "Plume",
+   "Roussette",
+   "Grisette",
+   "Poupoule",
+   "Coquine",
+   "Biscotte",
+   "Paillette",
+   "Cannelle",
+   "Muscade",
+   "Perle",
+   "Pistache",
+   "Prune",
+   "Quiche",
+   "Rillette",
+   "Sardine",
+   "Tartine",
+   "Ursule",
+   "Zézette",
+   "Agathe",
+   "Bulle",
+   "Capucine",
+   "Domino"
+  ],
+  "moutons": [
+   "Frisette",
+   "Bouclette",
+   "Nuage",
+   "Flocon",
+   "Coton",
+   "Laine",
+   "Pompon",
+   "Duvet",
+   "Moumoute"
+  ],
+  "cochons": [
+   "Truffe",
+   "Saucisson",
+   "Groin",
+   "Patapouf",
+   "Rosette",
+   "Boudin",
+   "Jambon",
+   "Lardon"
+  ]
+ },
+ "BUYERS": {
+  "maraicher": {
+   "nom": "Marius, le primeur",
+   "marche": true
+  },
+  "fromager": {
+   "nom": "Gérard, le fromager",
+   "marche": false
+  },
+  "boulanger": {
+   "nom": "Odile, la boulangère",
+   "marche": false
+  },
+  "grainetier": {
+   "nom": "Lucien, le grainetier",
+   "marche": false
+  },
+  "artisan": {
+   "nom": "la coopérative",
+   "marche": false
+  },
+  "fleuriste": {
+   "nom": "Rose, la fleuriste",
+   "marche": true
+  }
+ },
+ "ITEMS": {
+  "tomates": {
+   "nom": "Tomates",
+   "unite": "kg",
+   "prix": 2.4,
+   "perime": 5,
+   "attrait": 3.0,
+   "panier": [
+    1,
+    3
+   ],
+   "grossiste": "maraicher"
+  },
+  "carottes": {
+   "nom": "Carottes",
+   "unite": "kg",
+   "prix": 1.7,
+   "perime": 2,
+   "attrait": 2.5,
+   "panier": [
+    1,
+    2
+   ],
+   "grossiste": "maraicher"
+  },
+  "salades": {
+   "nom": "Salades",
+   "unite": "kg",
+   "prix": 2.2,
+   "perime": 12,
+   "attrait": 3.0,
+   "panier": [
+    0.5,
+    1.5
+   ],
+   "grossiste": "maraicher"
+  },
+  "pommes_de_terre": {
+   "nom": "Pommes de terre",
+   "unite": "kg",
+   "prix": 1.0,
+   "perime": 1,
+   "attrait": 2.5,
+   "panier": [
+    2,
+    5
+   ],
+   "grossiste": "maraicher"
+  },
+  "mais": {
+   "nom": "Maïs",
+   "unite": "kg",
+   "prix": 0.9,
+   "perime": 1,
+   "attrait": 1.0,
+   "panier": [
+    1,
+    2
+   ],
+   "grossiste": "grainetier"
+  },
+  "fraises": {
+   "nom": "Fraises",
+   "unite": "kg",
+   "prix": 6.0,
+   "perime": 10,
+   "attrait": 3.0,
+   "panier": [
+    0.5,
+    1.5
+   ],
+   "grossiste": "maraicher"
+  },
+  "potirons": {
+   "nom": "Potirons",
+   "unite": "kg",
+   "prix": 1.5,
+   "perime": 0.5,
+   "attrait": 1.5,
+   "panier": [
+    2,
+    5
+   ],
+   "grossiste": "maraicher"
+  },
+  "melons": {
+   "nom": "Melons",
+   "unite": "kg",
+   "prix": 3.8,
+   "perime": 4,
+   "attrait": 2.0,
+   "panier": [
+    1,
+    3
+   ],
+   "grossiste": "maraicher"
+  },
+  "poivrons": {
+   "nom": "Poivrons",
+   "unite": "kg",
+   "prix": 4.2,
+   "perime": 4,
+   "attrait": 1.5,
+   "panier": [
+    0.5,
+    1.5
+   ],
+   "grossiste": "maraicher"
+  },
+  "lait": {
+   "nom": "Lait",
+   "unite": "L",
+   "prix": 0.75,
+   "perime": 20,
+   "attrait": 2.5,
+   "panier": [
+    1,
+    3
+   ],
+   "grossiste": "fromager"
+  },
+  "oeufs": {
+   "nom": "Œufs",
+   "unite": "u",
+   "prix": 0.3,
+   "perime": 4,
+   "attrait": 3.0,
+   "panier": [
+    6,
+    12
+   ],
+   "grossiste": "boulanger"
+  },
+  "laine": {
+   "nom": "Laine",
+   "unite": "kg",
+   "prix": 9.0,
+   "perime": 0,
+   "attrait": 0.4,
+   "panier": [
+    0.3,
+    1
+   ],
+   "grossiste": "artisan"
+  },
+  "miel": {
+   "nom": "Miel",
+   "unite": "kg",
+   "prix": 11.0,
+   "perime": 0,
+   "attrait": 1.8,
+   "panier": [
+    0.5,
+    1
+   ],
+   "grossiste": "boulanger"
+  },
+  "fumier": {
+   "nom": "Fumier",
+   "unite": "kg",
+   "prix": 0.08,
+   "perime": 0,
+   "attrait": 0.4,
+   "panier": [
+    5,
+    20
+   ],
+   "grossiste": "fleuriste"
+  },
+  "fromage": {
+   "nom": "Fromage",
+   "unite": "kg",
+   "prix": 16.0,
+   "perime": 1,
+   "attrait": 2.4,
+   "panier": [
+    0.3,
+    1
+   ],
+   "grossiste": "fromager",
+   "transforme": true
+  },
+  "confiture": {
+   "nom": "Confiture de fraises",
+   "unite": "kg",
+   "prix": 13.0,
+   "perime": 0.3,
+   "attrait": 2.0,
+   "panier": [
+    0.4,
+    1
+   ],
+   "grossiste": "boulanger",
+   "transforme": true
+  },
+  "confiture_melon": {
+   "nom": "Confiture de melon",
+   "unite": "kg",
+   "prix": 9.5,
+   "perime": 0.3,
+   "attrait": 1.4,
+   "panier": [
+    0.4,
+    1
+   ],
+   "grossiste": "boulanger",
+   "transforme": true
+  },
+  "sauce_tomate": {
+   "nom": "Sauce tomate",
+   "unite": "kg",
+   "prix": 6.5,
+   "perime": 0.3,
+   "attrait": 1.8,
+   "panier": [
+    0.5,
+    1.5
+   ],
+   "grossiste": "fromager",
+   "transforme": true
+  },
+  "veloute": {
+   "nom": "Velouté de potiron",
+   "unite": "kg",
+   "prix": 6.0,
+   "perime": 0.4,
+   "attrait": 1.5,
+   "panier": [
+    0.5,
+    1.5
+   ],
+   "grossiste": "fromager",
+   "transforme": true
+  },
+  "pelotes": {
+   "nom": "Pelotes de laine",
+   "unite": "kg",
+   "prix": 19.0,
+   "perime": 0,
+   "attrait": 0.8,
+   "panier": [
+    0.2,
+    0.6
+   ],
+   "grossiste": "artisan",
+   "transforme": true
+  },
+  "pain_mais": {
+   "nom": "Pain de maïs",
+   "unite": "kg",
+   "prix": 4.5,
+   "perime": 15,
+   "attrait": 2.6,
+   "panier": [
+    0.5,
+    1.5
+   ],
+   "grossiste": "boulanger",
+   "transforme": true
+  },
+  "pain_epices": {
+   "nom": "Pain d'épices",
+   "unite": "kg",
+   "prix": 14.0,
+   "perime": 1.5,
+   "attrait": 1.6,
+   "panier": [
+    0.3,
+    0.8
+   ],
+   "grossiste": "boulanger",
+   "transforme": true
+  }
+ },
+ "ATELIER": {
+  "nom": "Atelier de transformation",
+  "prix": 2500,
+  "entretien": 8,
+  "desc": "Un bâtiment carrelé à côté du réservoir. Installez-y du matériel pour transformer vos récoltes et votre lait en produits qui se gardent et se vendent plus cher."
+ },
+ "EQUIPEMENTS": {
+  "cuve_fromage": {
+   "nom": "Cuve à fromage",
+   "emoji": "🧀",
+   "prix": 1800,
+   "entretien": 4,
+   "capacite": 8,
+   "desc": "Caille le lait et moule des tommes : le lait ne tourne plus, il prend de la valeur."
+  },
+  "chaudron": {
+   "nom": "Chaudron en cuivre",
+   "emoji": "🍯",
+   "prix": 900,
+   "entretien": 2,
+   "capacite": 10,
+   "desc": "Pour les confitures : les fraises et les melons trop mûrs ne sont plus perdus."
+  },
+  "autoclave": {
+   "nom": "Autoclave de conserverie",
+   "emoji": "🥫",
+   "prix": 1500,
+   "entretien": 3,
+   "capacite": 12,
+   "desc": "Met en bocaux la sauce tomate et le velouté de potiron : des légumes d'été vendus en hiver."
+  },
+  "rouet": {
+   "nom": "Rouet électrique",
+   "emoji": "🧶",
+   "prix": 1200,
+   "entretien": 2,
+   "capacite": 6,
+   "desc": "File la laine brute en pelotes, deux fois plus chères."
+  },
+  "four": {
+   "nom": "Four à pain",
+   "emoji": "🍞",
+   "prix": 2000,
+   "entretien": 4,
+   "capacite": 10,
+   "desc": "Pain de maïs et pain d'épices au miel, avec les œufs et le maïs de la ferme."
+  }
+ },
+ "RECETTES": {
+  "fromage": {
+   "nom": "Fromage",
+   "equipement": "cuve_fromage",
+   "entrees": {
+    "lait": 10
+   },
+   "sortie": 1.0,
+   "duree": 480
+  },
+  "confiture": {
+   "nom": "Confiture de fraises",
+   "equipement": "chaudron",
+   "entrees": {
+    "fraises": 1.4
+   },
+   "sortie": 1.0,
+   "duree": 180
+  },
+  "confiture_melon": {
+   "nom": "Confiture de melon",
+   "equipement": "chaudron",
+   "entrees": {
+    "melons": 1.5
+   },
+   "sortie": 1.0,
+   "duree": 180
+  },
+  "sauce_tomate": {
+   "nom": "Sauce tomate",
+   "equipement": "autoclave",
+   "entrees": {
+    "tomates": 2.0
+   },
+   "sortie": 1.0,
+   "duree": 240
+  },
+  "veloute": {
+   "nom": "Velouté de potiron",
+   "equipement": "autoclave",
+   "entrees": {
+    "potirons": 2.0,
+    "carottes": 0.5
+   },
+   "sortie": 1.0,
+   "duree": 300
+  },
+  "pelotes": {
+   "nom": "Pelotes de laine",
+   "equipement": "rouet",
+   "entrees": {
+    "laine": 1.1
+   },
+   "sortie": 1.0,
+   "duree": 360
+  },
+  "pain_mais": {
+   "nom": "Pain de maïs",
+   "equipement": "four",
+   "entrees": {
+    "mais": 1.0,
+    "oeufs": 2
+   },
+   "sortie": 1.0,
+   "duree": 180
+  },
+  "pain_epices": {
+   "nom": "Pain d'épices",
+   "equipement": "four",
+   "entrees": {
+    "miel": 0.4,
+    "oeufs": 3
+   },
+   "sortie": 1.0,
+   "duree": 240
+  }
+ },
+ "EMOJI": {
+  "lait": "🥛",
+  "oeufs": "🥚",
+  "laine": "🧶",
+  "miel": "🍯",
+  "fumier": "💩",
+  "fromage": "🧀",
+  "confiture": "🍓",
+  "confiture_melon": "🍈",
+  "sauce_tomate": "🥫",
+  "veloute": "🥣",
+  "pelotes": "🧶",
+  "pain_mais": "🍞",
+  "pain_epices": "🍪"
+ },
+ "CLIENTS": [
+  [
+   "Le Bistrot du Val",
+   "🍽️"
+  ],
+  [
+   "La cantine de l'école",
+   "🏫"
+  ],
+  [
+   "L'Épicerie fine Martin",
+   "🛒"
+  ],
+  [
+   "L'Hôtel des Tilleuls",
+   "🏨"
+  ],
+  [
+   "La Crêperie du lavoir",
+   "🥞"
+  ],
+  [
+   "Le comité des fêtes",
+   "🎉"
+  ],
+  [
+   "La maison de retraite",
+   "🏡"
+  ],
+  [
+   "Le traiteur Duval",
+   "🥂"
+  ]
+ ],
+ "COMMANDE_QTE": {
+  "lait": [
+   20,
+   90,
+   5
+  ],
+  "oeufs": [
+   24,
+   96,
+   12
+  ],
+  "laine": [
+   2,
+   6,
+   1
+  ],
+  "miel": [
+   2,
+   6,
+   0.5
+  ]
+ },
+ "COMMANDE_QTE_TRANSFO": [
+  3,
+  12,
+  1
+ ],
+ "FUMIER_NETTOYAGE": {
+  "vaches": 6.0,
+  "poules": 0.15,
+  "moutons": 2.0,
+  "cochons": 4.0
+ },
+ "SOINS": {
+  "vaches": {
+   "ramasser": "Traire",
+   "calin": "Brosser",
+   "pre": "au pré",
+   "enclos": "l'étable"
+  },
+  "poules": {
+   "ramasser": "Ramasser les œufs",
+   "calin": "Caresser",
+   "pre": "dans la cour",
+   "enclos": "le poulailler"
+  },
+  "moutons": {
+   "ramasser": "Tondre",
+   "calin": "Gratouiller",
+   "pre": "au pré",
+   "enclos": "la bergerie"
+  },
+  "cochons": {
+   "ramasser": "Ramasser le fumier",
+   "calin": "Gratter le dos",
+   "pre": "au pré",
+   "enclos": "la porcherie"
+  }
+ },
+ "UPGRADES": {
+  "arrosage": {
+   "nom": "Arrosage intelligent",
+   "prix": 1200,
+   "desc": "Arrose automatiquement les parcelles quand le sol descend sous 35 % (sauf s'il pleut)."
+  },
+  "distributeur": {
+   "nom": "Distributeur automatique",
+   "prix": 1500,
+   "desc": "Nourrit les animaux à chaque repas (06 h, 12 h, 18 h)."
+  },
+  "reservoir": {
+   "nom": "Grand réservoir",
+   "prix": 900,
+   "desc": "+4 000 L de capacité et pompe deux fois plus rapide."
+  },
+  "cloture": {
+   "nom": "Clôture renforcée",
+   "prix": 400,
+   "desc": "Protège le poulailler du renard."
+  },
+  "tracteur": {
+   "nom": "Tracteur",
+   "prix": 2200,
+   "desc": "+20 % de rendement à chaque récolte, et il laboure toute une parcelle d'un coup."
+  }
+ },
+ "TECH": {
+  "drone": {
+   "nom": "Drone agricole",
+   "prix": 5500,
+   "entretien": 10,
+   "emoji": "🚁",
+   "desc": "Survole les cultures et traite au plus juste : les plants perdent deux fois moins de santé et de qualité. Il reste au sol les jours d'orage."
+  },
+  "desherbeur": {
+   "nom": "Robot désherbeur",
+   "prix": 8000,
+   "entretien": 12,
+   "emoji": "🤖",
+   "desc": "Arrache les mauvaises herbes entre les rangs, sans aucun produit : plus besoin de désherber, et les cultures poussent 15 % plus vite."
+  },
+  "semoir": {
+   "nom": "Semoir autonome",
+   "prix": 9000,
+   "entretien": 12,
+   "emoji": "🌱",
+   "desc": "Prépare le sol et ressème tout seul la même culture dès qu'une planche est récoltée (les graines sont payées automatiquement)."
+  },
+  "recolteur": {
+   "nom": "Robot de récolte",
+   "prix": 12000,
+   "entretien": 18,
+   "emoji": "🦾",
+   "desc": "Récolte chaque planche dès qu'elle est mûre, jour et nuit : plus rien ne pourrit sur pied, et la qualité est au maximum."
+  },
+  "robot_traite": {
+   "nom": "Robot de traite",
+   "prix": 6000,
+   "entretien": 10,
+   "emoji": "🥛",
+   "desc": "Trait les vaches et ramasse œufs, laine et fumier tout seul, à toute heure : la production va directement au stock."
+  }
+ },
+ "NUISIBLES": {
+  "tomates": "pucerons",
+  "carottes": "mouches de la carotte",
+  "salades": "limaces",
+  "pommes_de_terre": "doryphores",
+  "mais": "pyrales",
+  "fraises": "limaces",
+  "potirons": "pucerons",
+  "melons": "pucerons",
+  "poivrons": "pucerons"
+ },
+ "TRAITEMENT": {
+  "naturel": {
+   "nom": "Purin d'ortie",
+   "prix": 10,
+   "protege": 0
+  },
+  "chimique": {
+   "nom": "Insecticide",
+   "prix": 30,
+   "protege": 4320
+  }
+ },
+ "BUILDINGS": {
+  "eolienne": {
+   "nom": "Éolienne",
+   "prix": 2000,
+   "max": 2,
+   "gain_max": 90,
+   "desc": "Revend son électricité : jusqu'à 90 €/jour selon le vent."
+  },
+  "serre": {
+   "nom": "Serre",
+   "prix": 4000,
+   "entretien": 15,
+   "ventes_requises": 3000,
+   "desc": "Remplace une parcelle : pousse +25 %, sol qui sèche moins vite, à l'abri des orages et de la canicule. Permet les melons et les poivrons."
+  },
+  "ruche": {
+   "nom": "Ruche",
+   "prix": 250,
+   "max": 6,
+   "miel_jour": 0.8,
+   "desc": "Les abeilles font du miel et pollinisent vos cultures (+5 % de récolte par ruche, jusqu'à +15 %)."
+  }
+ },
+ "WEATHER": {
+  "soleil": {
+   "nom": "Ensoleillé",
+   "temp": 26,
+   "pluie": 0.0,
+   "evap": 1.0,
+   "vent": 0.35,
+   "miel": 1.2,
+   "clients": 1.0,
+   "poids": 40,
+   "humidite": 62,
+   "uv": 7,
+   "risque": 5
+  },
+  "nuageux": {
+   "nom": "Nuageux",
+   "temp": 20,
+   "pluie": 0.0,
+   "evap": 0.7,
+   "vent": 0.55,
+   "miel": 0.8,
+   "clients": 1.0,
+   "poids": 25,
+   "humidite": 74,
+   "uv": 4,
+   "risque": 25
+  },
+  "pluie": {
+   "nom": "Pluie",
+   "temp": 16,
+   "pluie": 1.0,
+   "evap": 0.3,
+   "vent": 0.7,
+   "miel": 0.2,
+   "clients": 0.6,
+   "poids": 18,
+   "humidite": 92,
+   "uv": 2,
+   "risque": 90
+  },
+  "orage": {
+   "nom": "Orage",
+   "temp": 19,
+   "pluie": 1.6,
+   "evap": 0.4,
+   "vent": 1.0,
+   "miel": 0.0,
+   "clients": 0.3,
+   "poids": 7,
+   "humidite": 88,
+   "uv": 1,
+   "risque": 95
+  },
+  "canicule": {
+   "nom": "Canicule",
+   "temp": 35,
+   "pluie": 0.0,
+   "evap": 2.0,
+   "vent": 0.15,
+   "miel": 0.6,
+   "clients": 0.8,
+   "poids": 10,
+   "humidite": 38,
+   "uv": 10,
+   "risque": 0
+  }
+ },
+ "OBJECTIVES": [
+  {
+   "id": "recolte",
+   "titre": "Faire une première récolte"
+  },
+  {
+   "id": "ventes",
+   "titre": "Vendre pour 1 000 € de produits"
+  },
+  {
+   "id": "amelioration",
+   "titre": "Acheter une amélioration"
+  },
+  {
+   "id": "ruche",
+   "titre": "Installer une ruche"
+  },
+  {
+   "id": "reputation",
+   "titre": "Atteindre 75 de réputation au marché"
+  },
+  {
+   "id": "troupeau",
+   "titre": "Atteindre 60 animaux"
+  },
+  {
+   "id": "eolienne",
+   "titre": "Installer une éolienne"
+  },
+  {
+   "id": "serre",
+   "titre": "Construire une serre"
+  },
+  {
+   "id": "terrain",
+   "titre": "Acheter une nouvelle parcelle"
+  },
+  {
+   "id": "association",
+   "titre": "Associer deux cultures sur une parcelle"
+  },
+  {
+   "id": "techno",
+   "titre": "Acheter une technologie moderne"
+  },
+  {
+   "id": "transformation",
+   "titre": "Transformer un produit à l'atelier"
+  },
+  {
+   "id": "commande",
+   "titre": "Livrer une commande à un client"
+  },
+  {
+   "id": "hiver",
+   "titre": "Passer le premier hiver"
+  },
+  {
+   "id": "fortune",
+   "titre": "Atteindre 15 000 € en caisse"
+  }
+ ],
+ "MODES": {
+  "classique": "Atteindre 15 000 € sans faire faillite",
+  "libre": "Pas d'objectif d'argent : développez la ferme à votre rythme"
+ }
+}

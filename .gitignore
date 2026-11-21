@@ -2,3 +2,9 @@ sauvegarde.json
 __pycache__/
 *.pyc
 .DS_Store
+sauvegarde.tmp
+sauvegarde.abime*.json
+
+# Rust : compilation et exécutables (compilés ici ou téléchargés)
+/target/
+/bin/

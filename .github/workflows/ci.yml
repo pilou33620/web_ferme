@@ -1,0 +1,34 @@
+name: bancs d'essai
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  essais:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # le moteur et le serveur : cultures, bêtes, marché, atelier, commandes, saisons, sauvegardes, routes
+      - name: Moteur et serveur (Rust)
+        run: cargo test -p ferme
+
+      # l'interface : chaque script doit au moins se lire
+      - name: Interface (syntaxe)
+        run: for f in $(find web/js -name '*.js'); do node --check "$f" || exit 1; done
+
+      # Cargo.lock produit par la compilation, à reprendre dans le dépôt (le Raspberry Pi ne compile pas)
+      - name: Cargo.lock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cargo.lock
+          path: Cargo.lock
