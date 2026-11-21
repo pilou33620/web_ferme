@@ -1,6 +1,4 @@
 sauvegarde.json
-__pycache__/
-*.pyc
 .DS_Store
 sauvegarde.tmp
 sauvegarde.abime*.json

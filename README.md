@@ -1,40 +1,51 @@
 # 🌾 La Ferme du Val Vert
 
-Petit jeu de gestion de ferme : **moteur de simulation en Python**, **interface en HTML / CSS / JS**.
+Petit jeu de gestion de ferme : **moteur de simulation et serveur en Rust**, **interface en HTML / CSS / JS**.
 Le style graphique s'inspire d'une maquette d'appli « Farm App » (fond crème, onglets en pilule, carte vue du dessus avec zoom animé).
 
 ## Lancer le jeu
 
 ```bash
-python server.py              # ouvre http://localhost:8000 (et accessible depuis le réseau local)
-python server.py --nouvelle   # ignore la sauvegarde et repart de zéro
-python server.py --port 9000 --sans-navigateur
-python server.py --local      # cet appareil seulement, pas d'accès depuis le réseau
+./lancer.sh                   # ouvre http://localhost:8799 (et accessible depuis le réseau local)
+./lancer.sh --nouvelle        # ignore la sauvegarde et repart de zéro
+./lancer.sh --port 9000 --sans-navigateur
+./lancer.sh --local           # cet appareil seulement, pas d'accès depuis le réseau
 ```
+
+Sous Windows : double-cliquez sur **`lancer.bat`** (mêmes options en ligne de commande).
+
+Options : `--port N` (ou `--port=N`, 8799 par défaut), `--host ADRESSE` (adresse d'écoute, `0.0.0.0` par défaut),
+`--local` (= `--host 127.0.0.1`), `--nouvelle`, `--sans-navigateur`, `--sans-maj` (pas de vérification de mise à jour),
+`--sans-pause` (sans effet, accepté pour web_launcher). Une option inconnue affiche l'usage (code 2).
+
+### Installation
+
+`git clone https://github.com/pilou33620/web_ferme.git`, puis `./lancer.sh` (ou `lancer.bat`). Il n'y a rien d'autre à
+installer : `lancer.sh` prend l'exécutable du jeu dans `bin/` grâce à `binaires.sh`. Avec Rust (`cargo`) sur le poste, il
+est compilé sur place ; sinon (Raspberry Pi, PC sans Rust), il est téléchargé depuis la publication « binaires » du dépôt,
+compilée par la CI à chaque envoi sur `main` (Linux x86_64 et aarch64, macOS, Windows), et vérifié par son empreinte
+SHA-256. Le premier lancement demande donc le réseau sur un poste sans Rust.
 
 ### Jouer depuis un autre appareil (téléphone, tablette, autre PC)
 
-Par défaut le jeu écoute sur tout le réseau local (`0.0.0.0`). Au démarrage, la console affiche l'adresse à taper sur l'autre appareil, par exemple `http://192.168.1.20:8000`. Les deux appareils doivent être sur le même réseau (même box / Wi-Fi).
+Par défaut le jeu écoute sur tout le réseau local (`0.0.0.0`). Au démarrage, la console affiche l'adresse à taper sur l'autre appareil, par exemple `https://192.168.1.20:8799`. Les deux appareils doivent être sur le même réseau (même box / Wi-Fi).
 
 La première fois, l'autre appareil demande un **code d'appairage** à 6 chiffres, affiché dans la console du jeu. Il s'en souvient ensuite, et vaut pour tous les web tools du même appareil serveur. L'appareil qui fait tourner le jeu n'a jamais besoin de code.
 
 Le jeu sert aussi HTTPS sur son port (avec `openssl` présent), et y renvoie les autres appareils : l'adresse affichée commence alors par `https://`. La première fois, installez sur l'autre appareil la CA du poste (lien affiché dans la console), sinon le navigateur affiche une alerte. `WEB_TOOLS_HTTP=1` garde tout en HTTP.
 
-Sous Windows, au premier lancement, le pare-feu demande s'il faut autoriser Python : cochez **Réseaux privés** et validez. Si la fenêtre n'est pas apparue ou a été refusée : *Pare-feu Windows Defender → Autoriser une application → Python → cocher « Privé »*. Vérifiez aussi que votre Wi-Fi est réglé en réseau **privé** et non public.
+Sous Windows, au premier lancement, le pare-feu demande s'il faut autoriser le jeu (`ferme.exe`) : cochez **Réseaux privés** et validez. Si la fenêtre n'est pas apparue ou a été refusée : *Pare-feu Windows Defender → Autoriser une application → ferme → cocher « Privé »*. Vérifiez aussi que votre Wi-Fi est réglé en réseau **privé** et non public.
 
 Tous les appareils jouent la **même partie** : ce qui est fait sur l'un apparaît sur les autres.
 
-Le port et l'adresse peuvent aussi venir des variables d'environnement `PORT` et `HOST` (`--host` permet de choisir l'adresse d'écoute exacte). Si le port est déjà pris, le jeu essaie le suivant.
-Sous Windows, on peut aussi double-cliquer sur **`Lancer la ferme.bat`**.
-
-Python 3.10 ou plus récent. **Aucune dépendance** : seulement la bibliothèque standard.
+Le port et l'adresse par défaut peuvent aussi venir des variables d'environnement `PORT` et `HOST`. Si le port est déjà pris, le jeu essaie les 9 suivants. Hors `--local`, le jeu écoute sur toutes les interfaces, même avec une adresse `--host` précise (elle sert alors à l'adresse affichée).
 
 ### Mises à jour automatiques
 
-À chaque démarrage, le jeu interroge son dépôt GitHub (`git fetch`). S'il y a des nouveautés, il les installe (`git merge --ff-only`) puis **se relance tout seul** sur la nouvelle version. Le menu principal affiche alors ce qui a changé et le numéro de version. Il faut que le jeu ait été installé avec `git clone`.
+À chaque démarrage, le jeu interroge son dépôt GitHub (`git fetch`). S'il y a des nouveautés, il les installe (`git merge --ff-only`) puis **se relance tout seul** sur la nouvelle version (`lancer.sh` reprend l'exécutable de cette version). Le menu principal affiche alors ce qui a changé et le numéro de version. Il faut que le jeu ait été installé avec `git clone`.
 
-La mise à jour **n'écrase jamais rien**. Elle est ignorée, avec un message, si un fichier du jeu a été modifié sur le poste, s'il y a des commits locaux non publiés, ou si le dépôt est injoignable. Le jeu démarre alors avec la version actuelle. Pour sauter la vérification : `python server.py --sans-maj`. Votre sauvegarde (`sauvegarde.json`) n'est pas suivie par git : elle est conservée d'une version à l'autre.
-La partie est sauvegardée dans `sauvegarde.json` toutes les 10 s et à chaque action.
+La mise à jour **n'écrase jamais rien**. Elle est ignorée, avec un message, si un fichier du jeu a été modifié sur le poste, s'il y a des commits locaux non publiés, ou si le dépôt est injoignable. Le jeu démarre alors avec la version actuelle. Pour sauter la vérification : `--sans-maj` (web_launcher la passe : c'est lui qui met à jour). Votre sauvegarde (`sauvegarde.json`) n'est pas suivie par git : elle est conservée d'une version à l'autre.
+La partie est sauvegardée dans `sauvegarde.json` à chaque action, toutes les 30 s quand le temps tourne, et à l'arrêt (Ctrl+C, ou SIGTERM envoyé par web_launcher). Une sauvegarde illisible est mise de côté sous `sauvegarde.abime.json` (jamais écrasée) et le jeu repart d'une partie neuve.
 
 Le jeu s'ouvre sur le **menu principal**, et le temps reste en pause tant qu'il est affiché. Il propose « Reprendre la partie » (ou « Commencer » pour une partie neuve) et « Nouvelle partie », avec une confirmation avant d'effacer la ferme en cours. On y revient à tout moment avec le bouton ☰ de la barre latérale ou la touche Échap.
 
@@ -104,9 +115,11 @@ Atteindre **15 000 €** de trésorerie sans faire faillite. Si le compte reste 
 ## Architecture
 
 ```
-engine.py          logique pure du jeu (testable, sans entrées-sorties)
-server.py          serveur HTTP (stdlib) : boucle temps réel + API JSON + fichiers statiques
-mise_a_jour.py     mise à jour automatique depuis git au démarrage, puis redémarrage
+rust/ferme/src/moteur.rs   logique pure du jeu (testable, sans entrées-sorties) ; l'état est le JSON de la sauvegarde
+rust/ferme/src/hasard.rs   le hasard de Python (random.Random) au bit près : mêmes tirages qu'avant le portage
+rust/ferme/src/serveur.rs  serveur (web_tools_commun) : boucle temps réel, API JSON, fichiers de web/, options, mise à jour git
+rust/ferme/data/ref.json   tables du jeu (cultures, bêtes, produits, météo, atelier…)
+lancer.sh, lancer.bat      obtiennent l'exécutable (binaires.sh / binaires.cmd) puis lancent le jeu ; relance après une mise à jour
 web/index.html     structure des 5 écrans (Accueil, Ma ferme, Météo, Élevage, Marché)
 web/style.css      design system (couleurs, cartes, pilules, anneaux…)
 web/js/icons.js    icônes au trait
@@ -115,16 +128,18 @@ web/js/market.js   place du marché : étals, marchands, clients, pigeons et bê
 web/js/map.js      carte vue du dessus : décor de saison, cultures, serres, éoliennes, réservoir, atelier et son matériel, animaux, tracteur, terrains à vendre, neige, zoom
 web/js/weather.js  écran Météo : paysage animé selon le temps (soleil, nuages, vent, pluie, orage, canicule, éclaircie)
 web/js/app.js      état, rendu des écrans, actions, notifications
-tests/             tests unitaires du moteur
+rust/ferme/tests/  tests du moteur (et une vraie sauvegarde de la version Python, qui doit se relire)
 ```
 
 API :
 
 - `GET /api/etat` renvoie l'état complet, avec les valeurs calculées dans `derive` et les données de référence dans `ref`.
-- `POST /api/action` attend un JSON `{"type": "...", ...}`. Types possibles : `semer` (avec `champ`, `culture` et `planche`, 0 par défaut), `diviser` (`champ`, `planches` de 1 à 3), `construire` (`batiment` : `eolienne`, `ruche`, ou `serre` avec `champ`), `arroser` (`champ`), `fertiliser` (`champ`, `planche`, `engrais` : `fumier` ou `chimique`), `recolter` (`champ`, `planche`), `technologie` (`tech` : `drone`, `desherbeur`, `semoir` ou `recolteur`), `nourrir`, `soigner`, `vendre` (vente en gros), `etal` (`produit`, puis `actif` et/ou `prix`, `null` = prix conseillé), `collecte` (`actif`), `vendre_animal` (`categorie`, `id` facultatif), `acheter_parcelle` (achète le prochain terrain à vendre), `acheter` (`foin`, `foin_bio` ou un animal), `ameliorer`, `vitesse`, `menu` (`ouvert` : met en pause / reprend), `nouvelle_partie` (`mode` : `classique` ou `libre`), `continuer` (après une victoire, passe en mode libre), `construire` avec `batiment` : `atelier`, `equiper` (`equipement`), `transformer` (`recette`, `lots` : nombre ou `"max"`), `atelier_auto` (`equipement`, `actif`), `livrer` et `refuser` (`id` de la commande).
+- `POST /api/action` attend un JSON (en-tête `Content-Type: application/json` obligatoire, sinon 403 ; corps de 64 Ko au plus) `{"type": "...", ...}`. Types possibles : `semer` (avec `champ`, `culture` et `planche`, 0 par défaut), `diviser` (`champ`, `planches` de 1 à 3), `construire` (`batiment` : `eolienne`, `ruche`, ou `serre` avec `champ`), `arroser` (`champ`), `fertiliser` (`champ`, `planche`, `engrais` : `fumier` ou `chimique`), `recolter` (`champ`, `planche`), `technologie` (`tech` : `drone`, `desherbeur`, `semoir` ou `recolteur`), `nourrir`, `soigner`, `vendre` (vente en gros), `etal` (`produit`, puis `actif` et/ou `prix`, `null` = prix conseillé), `collecte` (`actif`), `vendre_animal` (`categorie`, `id` facultatif), `acheter_parcelle` (achète le prochain terrain à vendre), `acheter` (`foin`, `foin_bio` ou un animal), `ameliorer`, `vitesse`, `menu` (`ouvert` : met en pause / reprend), `nouvelle_partie` (`mode` : `classique` ou `libre`), `continuer` (après une victoire, passe en mode libre), `construire` avec `batiment` : `atelier`, `equiper` (`equipement`), `transformer` (`recette`, `lots` : nombre ou `"max"`), `atelier_auto` (`equipement`, `actif`), `livrer` et `refuser` (`id` de la commande).
 
 ## Tests
 
 ```bash
-python -m unittest discover -s tests -v
+cargo test -p ferme
 ```
+
+Sans Rust sur le poste (Raspberry Pi), la CI GitHub les lance à chaque envoi (`.github/workflows/ci.yml`), avec la vérification de syntaxe des scripts de `web/js`.

@@ -25,10 +25,3 @@ jobs:
       - name: Interface (syntaxe)
         run: for f in $(find web/js -name '*.js'); do node --check "$f" || exit 1; done
 
-      # Cargo.lock produit par la compilation, à reprendre dans le dépôt (le Raspberry Pi ne compile pas)
-      - name: Cargo.lock
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Cargo.lock
-          path: Cargo.lock
