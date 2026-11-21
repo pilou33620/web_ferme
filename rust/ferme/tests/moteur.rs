@@ -636,6 +636,8 @@ fn diligent_player_progresses() {
     );
     assert_eq!(g.s["statut"], "en_cours");
     assert!(g.s["argent"].f() > 1500.0);
+    // la même partie qu'en Python (engine.py, ordre des achats au marché fixé) : 4556.96328505337 €
+    assert_eq!(rond(g.s["argent"].f()), 4557, "argent exact : {}", g.s["argent"]);
 }
 
 #[test]
@@ -1117,6 +1119,12 @@ fn long_game_through_winter() {
     assert_eq!(g.s["statut"], "en_cours");
     assert!(g.s["stats"]["transformations"].f() > 5.0);
     assert!(contient(&g.s["objectifs"], "hiver"));
+    // la même partie qu'en Python (engine.py, ordre des achats au marché fixé) : 8653.546798797663 €
+    assert_eq!(rond(g.s["argent"].f()), 8654, "argent exact : {}", g.s["argent"]);
+    assert_eq!(
+        (g.s["stats"]["transformations"].i(), g.s["stats"]["commandes"].i(), g.s["stats"]["commandes_ratees"].i(), g.s["evenements"].l().len()),
+        (70, 3, 11, 12)
+    );
 }
 
 // ---- format des sauvegardes (portage) ----
