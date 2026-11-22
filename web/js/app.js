@@ -1,4 +1,4 @@
-// Interface du jeu : interroge le serveur Python, affiche l'état, envoie les actions.
+// Interface du jeu : interroge le serveur (Rust), affiche l'état, envoie les actions.
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
