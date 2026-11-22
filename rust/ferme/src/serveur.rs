@@ -8,6 +8,7 @@
 //! demande une fois un code aux autres appareils ; cet appareil-ci n'en a jamais besoin.
 
 use std::io::Write;
+use std::net::IpAddr;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -153,7 +154,7 @@ fn type_mime(ext: &str) -> Option<&'static str> {
 /// Un fichier de web/ : des composants ordinaires qui ne commencent pas par un point, une extension connue.
 /// Tout le reste est 404 (ni .git/, ni Cargo.toml, ni la sauvegarde).
 fn fichier(chemin: &str) -> Reponse {
-    let rel = if chemin == "/" { "index.html".to_string() } else { web_tools_commun::serveur::decoder_url(chemin.trim_start_matches('/')) };
+    let rel = if chemin == "/" { "index.html".to_string() } else { web_tools_commun::serveur::decoder_chemin(chemin.trim_start_matches('/')) };
     let p = Path::new(&rel);
     let sain = p.components().all(|c| matches!(c, Component::Normal(n) if !n.to_string_lossy().starts_with('.')));
     match (sain, p.extension().and_then(|x| x.to_str()).and_then(type_mime)) {
@@ -284,6 +285,26 @@ pub fn lire_args(argv: &[String], env_port: Option<&str>, env_host: Option<&str>
         i += 1;
     }
     Ok(a)
+}
+
+/// Où écouter : Some(ip) pour une seule adresse du poste (--host 192.168.1.20), None pour la boucle
+/// locale ou tout le réseau (0.0.0.0, ::, ou rien). Rend aussi le mode réseau de la Garde : vrai dès
+/// que l'adresse n'est pas une boucle locale (sinon le réseau entrerait sans code d'appairage).
+pub fn ecoute(a: &Args) -> Result<(Option<IpAddr>, bool), String> {
+    if a.host == "localhost" {
+        return Ok((None, false));
+    }
+    if a.host.is_empty() {
+        return Ok((None, true));
+    }
+    let ip = a.host.parse::<IpAddr>().map_err(|_| format!("--host (ou HOST) attend une adresse IP : {}", a.host))?.to_canonical();
+    if ip.is_loopback() {
+        Ok((None, false))
+    } else if ip.is_unspecified() {
+        Ok((None, true))
+    } else {
+        Ok((Some(ip), !ip.is_loopback()))
+    }
 }
 
 fn sans_ecran() -> bool {
@@ -440,9 +461,23 @@ pub fn main() {
         }
     }
 
-    let reseau = !matches!(args.host.as_str(), "127.0.0.1" | "localhost" | "::1");
-    let srv = match Serveur::ouvrir(args.port, reseau, 10) {
+    let (ip, reseau) = match ecoute(&args) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("{USAGE}\nferme: {e}");
+            std::process::exit(2);
+        }
+    };
+    let ouvert = match ip {
+        Some(ip) => Serveur::ouvrir_sur(ip, args.port, 10),
+        None => Serveur::ouvrir(args.port, reseau, 10),
+    };
+    let srv = match ouvert {
         Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrNotAvailable => {
+            println!("L'adresse {} n'est pas une adresse de ce poste (--host).", args.host);
+            std::process::exit(1);
+        }
         Err(e) => {
             println!("Aucun port libre à partir de {} ({e}). Essayez --port <numéro>.", args.port);
             std::process::exit(1);
@@ -461,14 +496,14 @@ pub fn main() {
         monde.jeu.log(&format!("Jeu mis à jour : {m}"), "succes");
         monde.maj = Some(m);
     }
-    let url = format!("http://localhost:{port}");
+    // une seule adresse du poste : localhost n'y répond pas, le navigateur ouvre cette adresse
+    let url = match ip {
+        Some(ip) => garde().adresse(&ip.to_string(), port),
+        None => format!("http://localhost:{port}"),
+    };
     println!("🌾 {NOM} tourne sur {url}  (Ctrl+C pour quitter)");
     if reseau {
-        let ip = if matches!(args.host.as_str(), "0.0.0.0" | "" | "::") {
-            appairage::adresse_reseau().map(|i| i.to_string())
-        } else {
-            Some(args.host.clone())
-        };
+        let ip = ip.or_else(appairage::adresse_reseau).map(|i| i.to_string());
         let adresse = match ip {
             Some(ip) => garde().adresse(&ip, port),
             None => format!("{}://<adresse IP de ce PC>:{port}", garde().schema()),
@@ -538,6 +573,26 @@ mod essais {
         assert!(lire_args(&a(&["--inconnu"]), None, None).is_err());
         assert!(lire_args(&a(&["--local=1"]), None, None).is_err());
         assert!(lire_args(&[], Some("abc"), None).is_err());
+    }
+
+    #[test]
+    fn adresse_d_ecoute() {
+        let e = |l: &[&str], hote: Option<&str>| ecoute(&lire_args(&a(l), None, hote).unwrap());
+        // tout le réseau (défaut) ou la boucle locale : Serveur::ouvrir
+        assert_eq!(e(&[], None), Ok((None, true)));
+        assert_eq!(e(&[], Some("")), Ok((None, true)));
+        assert_eq!(e(&["--host", "::"], None), Ok((None, true)));
+        for local in [&["--local"][..], &["--host", "127.0.0.1"], &["--host=localhost"], &["--host", "::1"], &["--host", "::ffff:127.0.0.1"], &["--host", "192.168.1.20", "--local"]] {
+            assert_eq!(e(local, None), Ok((None, false)), "{local:?}");
+        }
+        // une seule adresse du poste : Serveur::ouvrir_sur, et la Garde en mode réseau (code d'appairage)
+        let ip: IpAddr = "192.168.1.20".parse().unwrap();
+        assert_eq!(e(&["--host", "192.168.1.20"], None), Ok((Some(ip), true)));
+        assert_eq!(e(&["--local", "--host", "::ffff:192.168.1.20"], None), Ok((Some(ip), true)));
+        assert_eq!(e(&[], Some("192.168.1.20")), Ok((Some(ip), true)));
+        let v6: IpAddr = "fd7a:115c:a1e0::1".parse().unwrap();
+        assert_eq!(e(&["--host", "fd7a:115c:a1e0::1"], None), Ok((Some(v6), true)));
+        assert!(e(&["--host", "monpc.local"], None).is_err());
     }
 
     #[test]

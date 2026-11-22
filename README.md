@@ -38,7 +38,7 @@ Sous Windows, au premier lancement, le pare-feu demande s'il faut autoriser le j
 
 Tous les appareils jouent la **même partie** : ce qui est fait sur l'un apparaît sur les autres.
 
-Le port et l'adresse par défaut peuvent aussi venir des variables d'environnement `PORT` et `HOST`. Si le port est déjà pris, le jeu essaie les 9 suivants. Hors `--local`, le jeu écoute sur toutes les interfaces, même avec une adresse `--host` précise (elle sert alors à l'adresse affichée).
+Le port et l'adresse par défaut peuvent aussi venir des variables d'environnement `PORT` et `HOST`. Si le port est déjà pris, le jeu essaie les 9 suivants. Hors `--local`, le jeu écoute sur toutes les interfaces ; avec une adresse IP du poste (`--host 192.168.1.20`, IPv4 ou IPv6), il n'écoute que sur elle, toujours avec le code d'appairage.
 
 ### Mises à jour automatiques
 

@@ -13,4 +13,4 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 sha2 = "0.10"    # random.Random("texte") : la graine passe par SHA-512, comme en Python
 ctrlc = { version = "3", features = ["termination"] }   # SIGTERM et Ctrl+C : la partie est écrite avant de sortir
 # Serveur HTTP/HTTPS et appairage : communs aux web tools (dépôt web_suite), à la place de http.server et d'appairage.py
-web_tools_commun = { git = "https://github.com/pilou33620/web_suite", rev = "d40186eebfe11773b92a497c69d25b641264cd0d" }
+web_tools_commun = { git = "https://github.com/pilou33620/web_suite", rev = "bc1f42ca77df7ccfc415a93018640058c82e2efe" }
