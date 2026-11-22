@@ -6,3 +6,11 @@ sauvegarde.abime*.json
 # Rust : compilation et exécutables (compilés ici ou téléchargés)
 /target/
 /bin/
+
+# Cache les lanceurs Windows sous Linux (écrit par demarrer_WEB_FERME.sh)
+.hidden
+# Restes d'une mise à jour de la copie de production (web_tools_commun::production)
+.maj/
+.maj.zip
+.maj.tar.gz
+*.ancien

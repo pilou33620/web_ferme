@@ -6,13 +6,15 @@ Le style graphique s'inspire d'une maquette d'appli « Farm App » (fond crème,
 ## Lancer le jeu
 
 ```bash
-./lancer.sh                   # ouvre http://localhost:8799 (et accessible depuis le réseau local)
-./lancer.sh --nouvelle        # ignore la sauvegarde et repart de zéro
-./lancer.sh --port 9000 --sans-navigateur
-./lancer.sh --local           # cet appareil seulement, pas d'accès depuis le réseau
+./demarrer_WEB_FERME.sh                   # ouvre http://localhost:8799 (et accessible depuis le réseau local)
+./demarrer_WEB_FERME.sh --nouvelle        # ignore la sauvegarde et repart de zéro
+./demarrer_WEB_FERME.sh --port 9000 --sans-navigateur
+./demarrer_WEB_FERME.sh --local           # cet appareil seulement, pas d'accès depuis le réseau
 ```
 
-Sous Windows : double-cliquez sur **`lancer.bat`** (mêmes options en ligne de commande).
+Sous Windows : double-cliquez sur **`demarrer_WEB_FERME.cmd`** (mêmes options en ligne de commande). En cas d'erreur, la
+fenêtre reste ouverte avec la raison ; le premier lancement masque le fichier de l'autre système. `lancer.sh` et
+`lancer.bat` restent comme relais vers `demarrer_WEB_FERME`, pour les raccourcis existants.
 
 Options : `--port N` (ou `--port=N`, 8799 par défaut), `--host ADRESSE` (adresse d'écoute, `0.0.0.0` par défaut),
 `--local` (= `--host 127.0.0.1`), `--nouvelle`, `--sans-navigateur`, `--sans-maj` (pas de vérification de mise à jour),
@@ -20,9 +22,17 @@ Options : `--port N` (ou `--port=N`, 8799 par défaut), `--host ADRESSE` (adress
 
 ### Installation
 
-`git clone https://github.com/pilou33620/web_ferme.git`, puis `./lancer.sh` (ou `lancer.bat`). Il n'y a rien d'autre à
-installer : `lancer.sh` prend l'exécutable du jeu dans `bin/` grâce à `binaires.sh`. Avec Rust (`cargo`) sur le poste, il
-est compilé sur place ; sinon (Raspberry Pi, PC sans Rust), il est téléchargé depuis la publication « binaires » du dépôt,
+**Le plus simple : l'archive de production** (ni git ni Rust). Dans la
+[publication « binaires »](https://github.com/pilou33620/web_ferme/releases/tag/binaires), prendre l'archive du système :
+`web_ferme-prod-linux-aarch64.tar.gz` (Raspberry Pi 64 bits), `web_ferme-prod-linux-x86_64.tar.gz`,
+`web_ferme-prod-macos-aarch64.tar.gz` ou `web_ferme-prod-windows-x86_64.zip`. La décompresser : elle donne un dossier
+`web_ferme/` (exécutable dans `bin/`, page, scripts de démarrage, sans sources), puis lancer `demarrer_WEB_FERME`. Elle se
+met à jour seule au démarrage, sans git (voir *Mises à jour automatiques*). La sauvegarde (`sauvegarde.json`) n'est pas
+dans l'archive : jamais écrasée.
+
+**Pour développer : le dépôt git.** `git clone https://github.com/pilou33620/web_ferme.git`, puis `./demarrer_WEB_FERME.sh`
+(ou `demarrer_WEB_FERME.cmd`). Il n'y a rien d'autre à installer : `scripts/binaires.sh` prend l'exécutable du jeu dans
+`bin/`. Avec Rust (`cargo`) sur le poste, il est compilé sur place ; sinon (Raspberry Pi, PC sans Rust), il est téléchargé depuis la publication « binaires » du dépôt,
 compilée par la CI à chaque envoi sur `main` (Linux x86_64 et aarch64, macOS, Windows), et vérifié par son empreinte
 SHA-256. Le premier lancement demande donc le réseau sur un poste sans Rust.
 
@@ -42,7 +52,7 @@ Le port et l'adresse par défaut peuvent aussi venir des variables d'environneme
 
 ### Mises à jour automatiques
 
-À chaque démarrage, le jeu interroge son dépôt GitHub (`git fetch`). S'il y a des nouveautés, il les installe (`git merge --ff-only`) puis **se relance tout seul** sur la nouvelle version (`lancer.sh` reprend l'exécutable de cette version). Le menu principal affiche alors ce qui a changé et le numéro de version. Il faut que le jeu ait été installé avec `git clone`.
+À chaque démarrage, le jeu interroge son dépôt GitHub (`git fetch`). S'il y a des nouveautés, il les installe (`git merge --ff-only`) puis **se relance tout seul** sur la nouvelle version (`demarrer_WEB_FERME` reprend l'exécutable de cette version). Le menu principal affiche alors ce qui a changé et le numéro de version. Une copie de production (archive `web_ferme-prod`, sans git) se met à jour par la publication « binaires » : si une nouvelle archive est publiée, elle est téléchargée, vérifiée (SHA-256) et recopiée par-dessus, puis le jeu se relance ; seuls les fichiers de l'archive sont remplacés.
 
 La mise à jour **n'écrase jamais rien**. Elle est ignorée, avec un message, si un fichier du jeu a été modifié sur le poste, s'il y a des commits locaux non publiés, ou si le dépôt est injoignable. Le jeu démarre alors avec la version actuelle. Pour sauter la vérification : `--sans-maj` (web_launcher la passe : c'est lui qui met à jour). Votre sauvegarde (`sauvegarde.json`) n'est pas suivie par git : elle est conservée d'une version à l'autre.
 La partie est sauvegardée dans `sauvegarde.json` à chaque action, toutes les 30 s quand le temps tourne, et à l'arrêt (Ctrl+C, ou SIGTERM envoyé par web_launcher). Une sauvegarde illisible est mise de côté sous `sauvegarde.abime.json` (jamais écrasée) et le jeu repart d'une partie neuve.
@@ -119,7 +129,8 @@ rust/ferme/src/moteur.rs   logique pure du jeu (testable, sans entrées-sorties)
 rust/ferme/src/hasard.rs   le hasard de Python (random.Random) au bit près : mêmes tirages qu'avant le portage
 rust/ferme/src/serveur.rs  serveur (web_tools_commun) : boucle temps réel, API JSON, fichiers de web/, options, mise à jour git
 rust/ferme/data/ref.json   tables du jeu (cultures, bêtes, produits, météo, atelier…)
-lancer.sh, lancer.bat      obtiennent l'exécutable (binaires.sh / binaires.cmd) puis lancent le jeu ; relance après une mise à jour
+demarrer_WEB_FERME.sh, .cmd   obtiennent l'exécutable (scripts/binaires.sh / .cmd) puis lancent le jeu ; relance après une mise à jour
+lancer.sh, lancer.bat      relais vers demarrer_WEB_FERME (anciens noms)
 web/index.html     structure des 5 écrans (Accueil, Ma ferme, Météo, Élevage, Marché)
 web/style.css      design system (couleurs, cartes, pilules, anneaux…)
 web/js/icons.js    icônes au trait

@@ -19,7 +19,7 @@ jobs:
 
       # le moteur et le serveur : cultures, bêtes, marché, atelier, commandes, saisons, sauvegardes, routes
       - name: Moteur et serveur (Rust)
-        run: cargo test -p ferme
+        run: cargo test --locked -p ferme
 
       # l'interface : chaque script doit au moins se lire
       - name: Interface (syntaxe)

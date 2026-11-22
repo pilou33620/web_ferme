@@ -1,8 +1,12 @@
 name: exécutables
 
-# Compile l'exécutable du jeu pour chaque système et le dépose dans la publication « binaires » :
-# ferme-<système>.tar.gz (.zip sous Windows) et son empreinte SHA-256, que binaires.sh et
-# binaires.cmd prennent sur un poste sans cargo (Raspberry Pi, PC sans Rust).
+# Compile l'exécutable du jeu pour chaque système et le dépose dans la publication « binaires »,
+# en deux archives par système, chacune avec son empreinte SHA-256 (.sha256) :
+# - ferme-<système>.tar.gz (.zip sous Windows) : l'exécutable seul, que scripts/binaires.sh et
+#   scripts/binaires.cmd prennent sur un clone git sans cargo (Raspberry Pi, PC sans Rust) ;
+# - web_ferme-prod-<système> : la production, sans git ni sources — bin/, la page, demarrer_WEB_FERME.*,
+#   scripts/, README. Jamais les données de l'utilisateur. C'est l'archive que la copie de
+#   production cherche pour se mettre à jour (web_tools_commun::production).
 on:
   push:
     branches: [main]
@@ -31,7 +35,8 @@ jobs:
       - if: contains(matrix.cible, 'musl')
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
-      - run: cargo build --release -p ferme --bins --target ${{ matrix.cible }}
+      # --locked : Cargo.lock doit être complet (exécutables reproductibles)
+      - run: cargo build --locked --release -p ferme --bins --target ${{ matrix.cible }}
 
       - name: Archive (les exécutables et le commit dont ils viennent)
         shell: bash
@@ -51,6 +56,42 @@ jobs:
             tar -czf ferme-${{ matrix.nom }}.tar.gz -C bin .
           fi
 
+      - name: Archive de production (exécutables, page, scripts de démarrage)
+        shell: bash
+        run: |
+          P=prod/web_ferme
+          mkdir -p $P
+          cp -r bin scripts $P/
+          cp -r web demarrer_WEB_FERME.sh demarrer_WEB_FERME.cmd README.md $P/
+          if [ "${{ runner.os }}" = Windows ]; then
+            (cd prod && 7z a ../web_ferme-prod-${{ matrix.nom }}.zip web_ferme)
+          else
+            tar -czf web_ferme-prod-${{ matrix.nom }}.tar.gz -C prod web_ferme
+          fi
+
+      # Avant la publication : décompressée dans un dossier vide, l'archive démarre et sert la page.
+      - name: Essai de l'archive de production (dossier vide, démarrage, page en 200)
+        if: matrix.nom == 'linux-x86_64'
+        shell: bash
+        run: |
+          essai=$(mktemp -d)
+          tar -xzf web_ferme-prod-linux-x86_64.tar.gz -C "$essai"
+          cd "$essai/web_ferme"
+          test ! -e .git && test ! -e Cargo.toml && test ! -e rust
+          setsid sh demarrer_WEB_FERME.sh --sans-maj --local --port 18799 --sans-navigateur --sans-pause > journal.txt 2>&1 < /dev/null &
+          groupe=$!
+          code=000
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18799/ || true)
+            [ "$code" = 200 ] && break
+            sleep 1
+          done
+          kill -TERM -- -$groupe 2>/dev/null || true
+          if [ "$code" != 200 ]; then
+            echo "La page ne répond pas (code $code). Journal :"; cat journal.txt; exit 1
+          fi
+          echo "archive de production : démarrée, page en 200, arrêtée"
+
       - name: Publication
         shell: bash
         env:
@@ -59,9 +100,9 @@ jobs:
           # les quatre compilations arrivent ensemble : une seule crée la publication
           gh release view binaires >/dev/null 2>&1 \
             || gh release create binaires --title "Exécutables" \
-                 --notes "Exécutables du jeu, recompilés à chaque envoi sur main, pris par binaires.sh et binaires.cmd." \
+                 --notes "Exécutables du jeu, recompilés à chaque envoi sur main. ferme-<système> : pris par scripts/binaires.sh et scripts/binaires.cmd. web_ferme-prod-<système> : la production complète (exécutable, page, scripts de démarrage), à décompresser puis lancer par demarrer_WEB_FERME." \
             || true
-          for f in ferme-${{ matrix.nom }}.*; do
+          for f in ferme-${{ matrix.nom }}.* web_ferme-prod-${{ matrix.nom }}.*; do
             (sha256sum "$f" 2>/dev/null || shasum -a 256 "$f") | cut -d" " -f1 > "$f.sha256"
           done
-          gh release upload binaires ferme-${{ matrix.nom }}.* --clobber
+          gh release upload binaires ferme-${{ matrix.nom }}.* web_ferme-prod-${{ matrix.nom }}.* --clobber

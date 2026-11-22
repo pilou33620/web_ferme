@@ -16,12 +16,15 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use web_tools_commun::appairage::{self, Garde};
+use web_tools_commun::production;
 use web_tools_commun::serveur::{ErreurCorps, Reponse, Requete, Serveur};
 
 use crate::moteur::{Game, GAME_MIN_PER_SEC, V};
 
 pub const PORT: u16 = 8799;
 const NOM: &str = "La Ferme du Val Vert";
+/// Le dépôt, d'où vient aussi l'archive de production (publication « binaires »).
+const DEPOT: &str = "https://github.com/pilou33620/web_ferme";
 const CORPS_MAX: usize = 64 * 1024;
 /// Carte SD : la partie qui tourne ne s'écrit qu'au plus toutes les 30 s (plus après chaque action et à l'arrêt).
 const SAUVER_TOUTES: Duration = Duration::from_secs(30);
@@ -457,9 +460,22 @@ pub fn main() {
     }
     let _ = std::env::set_current_dir(racine());
 
-    // mise à jour automatique depuis git : lancé par lancer.sh, le jeu sort avec le code 75 et repart sur la nouvelle version
+    // mise à jour automatique : par la publication « binaires » pour une copie de production (archive web_ferme-prod,
+    // sans git), sinon par git. Lancé par demarrer_WEB_FERME, le jeu sort avec le code 75 et repart sur la nouvelle version
     if !args.sans_maj {
-        if let Some(resume) = mise_a_jour() {
+        let resume = if production::est_copie_prod(racine()) {
+            match production::mettre_a_jour(DEPOT, "web_ferme", racine(), &|t| println!("Mises à jour : {t}")) {
+                Ok(true) => Some("nouvelle version installée".to_string()),
+                Ok(false) => None,
+                Err(e) => {
+                    println!("[X] {e}");
+                    None
+                }
+            }
+        } else {
+            mise_a_jour()
+        };
+        if let Some(resume) = resume {
             if std::env::var_os("FERME_RELANCEUR").is_some() {
                 let _ = std::fs::write(fichier_maj(), &resume);
                 println!("Redémarrage du jeu sur la nouvelle version…");

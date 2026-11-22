@@ -1,9 +1,11 @@
 @echo off
-rem Met l'executable du jeu dans bin\ (appele par lancer.bat, depuis la racine).
+rem Met l'executable du jeu dans bin\ (appele par demarrer_WEB_FERME.cmd, depuis la racine).
 rem Avec cargo sur le poste : compile ici, toujours a jour avec les sources.
 rem Sinon : telecharge depuis GitHub (publication "binaires", compilee par la CI a chaque
 rem envoi sur main), une fois par version : bin\commit dit de quelle version il vient.
 setlocal
+rem copie de production (archive "web_ferme-prod", sans les sources) : l'executable est deja la
+if not exist Cargo.toml if exist bin\ferme.exe exit /b 0
 if not exist bin mkdir bin
 where cargo >nul 2>nul
 if not errorlevel 1 (
